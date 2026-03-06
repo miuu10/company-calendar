@@ -136,7 +136,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .modal-actions { display: flex; gap: 8px; margin-top: 24px; }
 .modal-actions .btn { flex: 1; padding: 13px 0; font-size: 14px; }
 
-/* ── 반응형 모바일 최적화 ── */
+/* ── 반응형 ── */
 @media (max-width: 768px) {
   header { padding: 0 14px; height: 56px; }
   .header-brand h1 { font-size: 15px; }
@@ -426,7 +426,6 @@ const RAW_FOREIGN_HOLIDAYS = [
   ["th", "송구", "2024-12-31","2025-12-31","2026-12-31"],
 
   // 🇲🇾 말레이시아 (국가코드: my)
-  // 기존 '구정'을 '춘절'로 통일하여 중국 국기와 묶이도록 수정
   ["my", "신년", "2024-01-01","2025-01-01","2026-01-01","2027-01-01"],
   ["my", "춘절", "2024-02-10","2024-02-11","2024-02-12","2025-01-29","2025-01-30","2026-02-17","2026-02-18","2027-02-06","2027-02-07"],
   ["my", "이드알피트르", "2024-04-10","2024-04-11","2025-03-31","2025-04-01","2026-03-20","2026-03-21","2027-03-10","2027-03-11"],
@@ -629,6 +628,7 @@ function filteredEvents() {
 
   base.forEach(ev => {
     if (!ev.repeatMaster) { expanded.push(ev); return; }
+    // 반복 마스터 → 이 달에 해당하는 날짜들 생성
     const dates = expandRepeatForMonth(ev, monthStart, monthEnd);
     dates.forEach(d => expanded.push({ ...ev, date: d, _virtual: true }));
   });
@@ -950,32 +950,39 @@ window.saveEvent = async function() {
     : [];
 
   if (isRepeat) {
+    if (repeatType === "weekday" && repeatDays.length === 0) {
+      addToast("반복 요일을 하나 이상 선택해주세요.", "error"); return;
+    }
     data.repeatType = repeatType;
     data.repeatEnd = repeatEnd || null;
     data.repeatDays = repeatDays;
     data.repeatGroupId = editingId || ("rg_" + Date.now());
     data.repeatStopped = false;
+    
+    // ⭐ [버그 수정] 수정할 때도 달력에 반복이라고 알려주는 마스터 스위치를 켭니다!
+    data.repeatMaster = true; 
+  } else {
+    // 반복 설정을 해제하고 저장할 경우, 기존의 반복 데이터 초기화
+    data.repeatMaster = false;
+    data.repeatType = null;
+    data.repeatEnd = null;
+    data.repeatDays = null;
+    data.repeatGroupId = null;
   }
 
   try {
     if (editingId) {
+      // 기존 일정 수정
       await updateDoc(doc(db, "events", editingId), data);
       const alarmKey = `${editingId}_${currentUser}`;
       delete firedAlarms[alarmKey];
       localStorage.setItem("firedAlarms", JSON.stringify(firedAlarms));
       addToast("일정이 수정되었습니다.", "success");
-    } else if (isRepeat) {
-      if (repeatType === "weekday" && repeatDays.length === 0) {
-        addToast("반복 요일을 하나 이상 선택해주세요.", "error"); return;
-      }
-      data.repeatMaster = true;
-      data.createdAt = serverTimestamp();
-      await addDoc(eventsCol, data);
-      addToast("반복 일정이 추가되었습니다. ✅", "success");
     } else {
+      // 새 일정 추가
       data.createdAt = serverTimestamp();
       await addDoc(eventsCol, data);
-      addToast("일정이 추가되었습니다. ✅", "success");
+      addToast(isRepeat ? "반복 일정이 추가되었습니다. ✅" : "일정이 추가되었습니다. ✅", "success");
     }
     closeModal();
   } catch(e) {

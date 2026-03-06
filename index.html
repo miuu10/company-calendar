@@ -133,17 +133,25 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .modal-actions { display: flex; gap: 8px; margin-top: 24px; }
 .modal-actions .btn { flex: 1; padding: 13px 0; font-size: 14px; }
 
-/* ── 반응형 ── */
+/* ── 반응형 모바일 최적화 ── */
 @media (max-width: 768px) {
   header { padding: 0 14px; height: 56px; }
   .header-brand h1 { font-size: 15px; }
   .header-brand p { display: none; }
   main { padding: 14px 8px 32px; }
   .cal-nav h2 { font-size: 20px; }
-  .cell { min-height: 60px; padding: 4px 3px; }
-  .event-chip { font-size: 9px; padding: 1px 4px; }
+  .cell { min-height: 65px; padding: 4px 3px; }
+  .event-chip { 
+    font-size: 10px; 
+    padding: 2px 4px; 
+    white-space: nowrap; 
+    overflow: hidden; 
+    text-overflow: ellipsis; 
+    max-width: 100%;
+    line-height: 1.2;
+  }
   .chip-author { display: none; }
-  .modal { padding: 22px 18px; }
+  .modal { padding: 22px 18px; width: 95%; }
   .form-row2 { grid-template-columns: 1fr; }
   .filter-bar { gap: 5px; }
   .filter-chip { font-size: 11px; padding: 4px 10px; }
@@ -151,18 +159,18 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   .day-header { font-size: 11px; padding: 10px 0; }
   .legend { gap: 5px; }
   .legend-item { font-size: 10px; padding: 3px 8px; }
+  .more-badge { font-size: 9px; margin-top: 1px; }
+  .day-num { width: 22px; height: 22px; font-size: 11px; }
 }
 </style>
 </head>
 <body>
 
-<!-- 로딩 -->
 <div class="loading-screen" id="loadingScreen">
   <div class="logo">📅</div>
   <p>사내 캘린더 불러오는 중...</p>
 </div>
 
-<!-- 이름 입력 -->
 <div class="name-modal-wrap" id="nameModal" style="display:none">
   <div class="name-modal">
     <div class="emoji">👋</div>
@@ -173,10 +181,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   </div>
 </div>
 
-<!-- 토스트 -->
 <div id="toasts"></div>
 
-<!-- 헤더 -->
 <header>
   <div class="header-brand">
     <span class="icon">📅</span>
@@ -195,9 +201,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   </div>
 </header>
 
-<!-- 메인 -->
 <main>
-  <!-- 달력 뷰 -->
   <div id="calView">
     <div class="cal-nav">
       <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
@@ -205,7 +209,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
       <button class="btn-arrow" onclick="changeMonth(1)">›</button>
     </div>
 
-    <!-- 필터 -->
     <div class="filter-bar" id="filterBar"></div>
 
     <div class="calendar">
@@ -224,7 +227,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     <div class="legend" id="legend"></div>
   </div>
 
-  <!-- 목록 뷰 -->
   <div id="listView" style="display:none">
     <div class="cal-nav">
       <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
@@ -240,7 +242,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 </main>
 
 
-<!-- 날짜 상세 모달 -->
 <div class="overlay" id="dayOverlay" style="display:none" onclick="if(event.target===this)document.getElementById('dayOverlay').style.display='none'">
   <div class="modal" style="max-width:500px">
     <div class="modal-header">
@@ -252,7 +253,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   </div>
 </div>
 
-<!-- 이벤트 모달 -->
 <div class="overlay" id="overlay" style="display:none" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-header">
@@ -304,7 +304,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
             <option value="monthly">매월</option>
           </select>
         </div>
-        <!-- 요일 선택 (weekday 선택 시) -->
         <div id="weekdayRow" style="display:none;gap:6px;flex-wrap:wrap">
           <label style="font-size:12px;font-weight:700;color:#64748B;width:100%;margin-bottom:2px">반복 요일 선택</label>
           <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" class="dow-check" value="0" style="accent-color:#EF4444"> 일</label>
@@ -315,7 +314,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
           <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" class="dow-check" value="5" style="accent-color:#3B82F6"> 금</label>
           <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" class="dow-check" value="6" style="accent-color:#3B82F6"> 토</label>
         </div>
-        <!-- 종료일 (선택) -->
         <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#64748B">
           <span>종료일</span>
           <input class="form-input" type="date" id="fRepeatEnd" style="width:auto;padding:5px 10px" />
@@ -356,7 +354,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   </div>
 </div>
 
-<!-- Firebase SDK -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp }
@@ -410,23 +407,23 @@ const LUNAR_HOLIDAYS = {
 // 대체공휴일 (공휴일이 일요일·토요일 또는 다른 공휴일과 겹칠 때)
 const SUBSTITUTE_HOLIDAYS = {
   // 2024
-  "2024-02-12": "설날 대체공휴일",   // 설날 연휴(2/11 일)
-  "2024-05-06": "어린이날 대체공휴일", // 어린이날(5/5 일)
-  "2024-09-18": "추석 대체공휴일",    // 추석연휴 중복
+  "2024-02-12": "설날 대체공휴일",   
+  "2024-05-06": "어린이날 대체공휴일", 
+  "2024-09-18": "추석 대체공휴일",    
 
   // 2025
-  "2025-03-03": "삼일절 대체공휴일",  // 삼일절(3/1 토)
-  "2025-05-06": "부처님오신날 대체공휴일", // 어린이날·부처님오신날 겹침
-  "2025-10-08": "추석 대체공휴일",    // 추석연휴(10/5 일)
+  "2025-03-03": "삼일절 대체공휴일",  
+  "2025-05-06": "부처님오신날 대체공휴일", 
+  "2025-10-08": "추석 대체공휴일",    
 
   // 2026
-  "2026-03-02": "삼일절 대체공휴일",  // 삼일절(3/1 일)
-  "2026-05-25": "부처님오신날 대체공휴일", // 부처님오신날(5/24 일)
-  "2026-09-28": "추석 대체공휴일",    // 추석연휴(9/26 토)
+  "2026-03-02": "삼일절 대체공휴일",  
+  "2026-05-25": "부처님오신날 대체공휴일", 
+  "2026-09-28": "추석 대체공휴일",    
 
   // 2027
-  "2027-02-09": "설날 대체공휴일",    // 설날연휴(2/7 일)
-  "2027-08-16": "광복절 대체공휴일",  // 광복절(8/15 일)
+  "2027-02-09": "설날 대체공휴일",    
+  "2027-08-16": "광복절 대체공휴일",  
 };
 
 // ── 해외 공휴일 ──────────────────────────────
@@ -488,33 +485,10 @@ const FOREIGN_HOLIDAYS = {
   "2027-09-16":"🇲🇾말레이시아데이","2027-12-25":"🇲🇾크리스마스",
 };
 
-// ── 박람회 일정 ───────────────────────────────
-const TRADE_SHOWS = {
-  // KIMES (서울 코엑스, 매년 3월)
-  "2024-03-14":"🏥KIMES","2024-03-15":"🏥KIMES","2024-03-16":"🏥KIMES","2024-03-17":"🏥KIMES",
-  "2025-03-13":"🏥KIMES","2025-03-14":"🏥KIMES","2025-03-15":"🏥KIMES","2025-03-16":"🏥KIMES",
-  "2026-03-12":"🏥KIMES","2026-03-13":"🏥KIMES","2026-03-14":"🏥KIMES","2026-03-15":"🏥KIMES",
-  "2027-03-11":"🏥KIMES","2027-03-12":"🏥KIMES","2027-03-13":"🏥KIMES","2027-03-14":"🏥KIMES",
-  // CMEF 春 (선전/상하이, 매년 5월)
-  "2024-05-14":"🏥CMEF春","2024-05-15":"🏥CMEF春","2024-05-16":"🏥CMEF春","2024-05-17":"🏥CMEF春",
-  "2025-05-13":"🏥CMEF春","2025-05-14":"🏥CMEF春","2025-05-15":"🏥CMEF春","2025-05-16":"🏥CMEF春",
-  "2026-05-12":"🏥CMEF春","2026-05-13":"🏥CMEF春","2026-05-14":"🏥CMEF春","2026-05-15":"🏥CMEF春",
-  "2027-05-11":"🏥CMEF春","2027-05-12":"🏥CMEF春","2027-05-13":"🏥CMEF春","2027-05-14":"🏥CMEF春",
-  // CMEF 秋 (상하이, 매년 11월)
-  "2024-11-05":"🏥CMEF秋","2024-11-06":"🏥CMEF秋","2024-11-07":"🏥CMEF秋","2024-11-08":"🏥CMEF秋",
-  "2025-11-04":"🏥CMEF秋","2025-11-05":"🏥CMEF秋","2025-11-06":"🏥CMEF秋","2025-11-07":"🏥CMEF秋",
-  "2026-11-03":"🏥CMEF秋","2026-11-04":"🏥CMEF秋","2026-11-05":"🏥CMEF秋","2026-11-06":"🏥CMEF秋",
-  "2027-11-02":"🏥CMEF秋","2027-11-03":"🏥CMEF秋","2027-11-04":"🏥CMEF秋","2027-11-05":"🏥CMEF秋",
-};
-
 function getForeignHolidays(dateStr) {
   const results = [];
   if (FOREIGN_HOLIDAYS[dateStr]) results.push(FOREIGN_HOLIDAYS[dateStr]);
   return results;
-}
-
-function getTradeShow(dateStr) {
-  return TRADE_SHOWS[dateStr] || null;
 }
 
 function getHolidayName(dateStr) {
@@ -790,14 +764,6 @@ function renderCells() {
       more.onclick = e => { e.stopPropagation(); openDayModal(dateStr, dayEvs); };
       cell.appendChild(more);
     }
-    // 박람회
-    const tradeShow = getTradeShow(dateStr);
-    if (tradeShow) {
-      const tsEl = document.createElement("div");
-      tsEl.style.cssText = "font-size:10px;color:#0369A1;font-weight:700;padding:0 2px 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#E0F2FE;border-radius:3px;margin-bottom:1px;";
-      tsEl.textContent = tradeShow;
-      cell.appendChild(tsEl);
-    }
 
     // 해외 공휴일
     const foreignHols = getForeignHolidays(dateStr);
@@ -951,7 +917,7 @@ document.getElementById("fCategory").addEventListener("change", function() {
 });
 
 window.stopRepeatFromHere = async function() {
-  if (!confirm("이 날짜 이후 반복 일정을 모두 삭제합니다. 이 일정은 유지됩니다.")) return;
+  if (!confirm("이 날짜 이후 반복 일정을 모두 삭제합니다.\n이 일정은 유지됩니다.")) return;
   const ev = events.find(e => e.id === editingId);
   if (!ev || !ev.repeatGroupId) return;
   try {

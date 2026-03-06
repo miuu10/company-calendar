@@ -139,8 +139,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .alarm-toggle input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--blue); cursor: pointer; }
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
-.modal-actions { display: flex; gap: 8px; margin-top: 24px; }
-.modal-actions .btn { flex: 1; padding: 13px 0; font-size: 14px; }
 
 /* ── 반응형 ── */
 @media (max-width: 768px) {
@@ -204,7 +202,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   <div id="calView">
     <div class="cal-nav">
       <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
-      <div style="text-align:center"><h2 id="monthTitle"></h2><p style="font-size:12px;color:#94A3B8;margin-top:4px">📌 날짜를 클릭하면 일정 추가</p><button onclick="goToday()" style="margin-top:6px;background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button></div>
+      <div style="text-align:center">
+        <h2 id="monthTitle"></h2>
+        <p style="font-size:12px;color:#94A3B8;margin-top:4px">📌 날짜를 클릭하면 일정 추가</p>
+        <button onclick="goToday()" style="margin-top:6px;background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button>
+      </div>
       <button class="btn-arrow" onclick="changeMonth(1)">›</button>
     </div>
 
@@ -230,9 +232,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     <div class="cal-nav">
       <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
       <div style="text-align:center">
-        <h2 id="listMonthTitle"></h2>
-        <p style="font-size:12px;color:#94A3B8;margin-top:2px">📋 해당 월 전체 일정</p>
-        <button onclick="goToday()" style="margin-top:6px;background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button>
+        <h2 id="listMonthTitle" style="font-size: 22px;"></h2>
+        <div style="display:flex; justify-content:center; gap:8px; margin-top:6px;">
+            <button id="listModeBtn" onclick="toggleListMode()" style="background:#F1F5F9;color:#64748B;border:1.5px solid #E2E8F0;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🗓 연간 보기</button>
+            <button onclick="goToday()" style="background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button>
+        </div>
       </div>
       <button class="btn-arrow" onclick="changeMonth(1)">›</button>
     </div>
@@ -389,24 +393,13 @@ const firebaseConfig = {
 };
 // ══════════════════════════════════════════════
 
-// ── 한국 공휴일 ─────────────────────────────
-const KR_HOLIDAYS = {
-  "01-01": "신정", "03-01": "삼일절", "05-05": "어린이날", "06-06": "현충일",
-  "08-15": "광복절", "10-03": "개천절", "10-09": "한글날", "12-25": "크리스마스",
-};
-
+// ── 한국/해외 공휴일 로직 (이전과 동일) ──
+const KR_HOLIDAYS = { "01-01": "신정", "03-01": "삼일절", "05-05": "어린이날", "06-06": "현충일", "08-15": "광복절", "10-03": "개천절", "10-09": "한글날", "12-25": "크리스마스" };
 const LUNAR_HOLIDAYS = {
-  "2024-02-09":"설날 연휴","2024-02-10":"설날","2024-02-11":"설날 연휴",
-  "2025-01-28":"설날 연휴","2025-01-29":"설날","2025-01-30":"설날 연휴",
-  "2026-02-16":"설날 연휴","2026-02-17":"설날","2026-02-18":"설날 연휴",
-  "2027-02-06":"설날 연휴","2027-02-07":"설날","2027-02-08":"설날 연휴",
-  "2024-09-16":"추석 연휴","2024-09-17":"추석","2024-09-18":"추석 연휴",
-  "2025-10-05":"추석 연휴","2025-10-06":"추석","2025-10-07":"추석 연휴",
-  "2026-09-24":"추석 연휴","2026-09-25":"추석","2026-09-26":"추석 연휴",
-  "2027-09-14":"추석 연휴","2027-09-15":"추석","2027-09-16":"추석 연휴",
+  "2024-02-09":"설날 연휴","2024-02-10":"설날","2024-02-11":"설날 연휴","2025-01-28":"설날 연휴","2025-01-29":"설날","2025-01-30":"설날 연휴","2026-02-16":"설날 연휴","2026-02-17":"설날","2026-02-18":"설날 연휴","2027-02-06":"설날 연휴","2027-02-07":"설날","2027-02-08":"설날 연휴",
+  "2024-09-16":"추석 연휴","2024-09-17":"추석","2024-09-18":"추석 연휴","2025-10-05":"추석 연휴","2025-10-06":"추석","2025-10-07":"추석 연휴","2026-09-24":"추석 연휴","2026-09-25":"추석","2026-09-26":"추석 연휴","2027-09-14":"추석 연휴","2027-09-15":"추석","2027-09-16":"추석 연휴",
   "2024-05-15":"부처님오신날","2025-05-05":"부처님오신날","2026-05-24":"부처님오신날","2027-05-13":"부처님오신날",
 };
-
 const SUBSTITUTE_HOLIDAYS = {
   "2024-02-12": "설날 대체공휴일", "2024-05-06": "어린이날 대체공휴일", "2024-09-18": "추석 대체공휴일",    
   "2025-03-03": "삼일절 대체공휴일", "2025-05-06": "부처님오신날 대체공휴일", "2025-10-08": "추석 대체공휴일",    
@@ -422,7 +415,6 @@ const RAW_FOREIGN_HOLIDAYS = [
   ["cn", "단오절", "2024-06-10","2025-06-02","2026-06-19"],
   ["cn", "중추절", "2024-09-17","2025-10-06","2026-09-25","2027-09-15"],
   ["cn", "국경절", "2024-10-01","2024-10-02","2024-10-03","2024-10-04","2024-10-07","2025-10-01","2025-10-02","2025-10-03","2025-10-07","2026-10-01","2026-10-02","2026-10-05","2026-10-06","2026-10-07","2027-10-01","2027-10-04","2027-10-05","2027-10-06","2027-10-07"],
-  
   ["th", "신년", "2024-01-01","2025-01-01","2026-01-01"],
   ["th", "마카부차", "2024-02-24"],
   ["th", "짝끄리기념일", "2024-04-06","2025-04-06","2026-04-06"],
@@ -440,7 +432,6 @@ const RAW_FOREIGN_HOLIDAYS = [
   ["th", "아버지날", "2024-12-05","2025-12-05","2026-12-05"],
   ["th", "헌법기념일", "2024-12-10","2025-12-10","2026-12-10"],
   ["th", "송구", "2024-12-31","2025-12-31","2026-12-31"],
-
   ["my", "신년", "2024-01-01","2025-01-01","2026-01-01","2027-01-01"],
   ["my", "춘절", "2024-02-10","2024-02-11","2024-02-12","2025-01-29","2025-01-30","2026-02-17","2026-02-18","2027-02-06","2027-02-07"],
   ["my", "이드알피트르", "2024-04-10","2024-04-11","2025-03-31","2025-04-01","2026-03-20","2026-03-21","2027-03-10","2027-03-11"],
@@ -472,7 +463,12 @@ function getHolidayName(dateStr) {
 }
 function isSubstituteHoliday(dateStr) { return !!SUBSTITUTE_HOLIDAYS[dateStr]; }
 
-// ⭐ 요청하신 8개 카테고리 순서대로 정렬 + 이전 데이터 오류 방지용 보이지 않는 카테고리
+// ⭐ 타임존 에러 방지용 날짜 포맷 함수
+function toLocalISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ⭐ 요청하신 8개 카테고리 순서대로 정렬 + 이전 데이터 오류 방지
 const CATS = {
   remittance:     { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "송금" },
   departure:      { bg: "#DB2777", light: "#FDF2F8", text: "#BE185D", label: "출항" },
@@ -481,7 +477,7 @@ const CATS = {
   gmp:            { bg: "#8B5CF6", light: "#F5F3FF", text: "#6D28D9", label: "GMP" },
   biz_trip:       { bg: "#F97316", light: "#FFF7ED", text: "#C2410C", label: "출장" },
   vacation:       { bg: "#F59E0B", light: "#FFFBEB", text: "#B45309", label: "휴가" },
-  other:          { bg: "#64748B", light: "#F1F5F9", text: "#475569", label: "기타" }, // 기타 추가 완료
+  other:          { bg: "#64748B", light: "#F1F5F9", text: "#475569", label: "기타" }, 
 };
 
 const USER_COLORS = ["#06B6D4","#F97316","#EC4899","#14B8A6","#6366F1","#84CC16","#EF4444","#8B5CF6"];
@@ -500,6 +496,7 @@ let currentYear, currentMonth;
 let editingId = null;
 let currentEditDate = null;
 let currentView = "cal";
+let listMode = "month"; // ⭐ 연간보기 모드 변수 추가
 let currentUser = localStorage.getItem("calendarUser") || "";
 let activeFilter = "all";
 let firedAlarms = JSON.parse(localStorage.getItem("firedAlarms") || "{}");
@@ -626,43 +623,57 @@ window.setFilter = function(val) {
   renderAll();
 };
 
-function filteredEvents() {
+// ⭐ 날짜 범위 파싱하여 화면용 제목을 만드는 함수
+function getDisplayTitle(ev) {
+    let displayTitle = ev.title;
+    if (ev.endDate && ev.endDate > ev.date) {
+        const oStart = ev.origDate || ev.date;
+        const oEnd = ev.origEndDate || ev.endDate;
+        const sm = oStart.slice(5,7), sd = oStart.slice(8,10);
+        const em = oEnd.slice(5,7), ed = oEnd.slice(8,10);
+        const rangeStr = (sm === em) ? `${sd}~${ed}` : `${sm}/${sd}~${em}/${ed}`;
+        displayTitle = `${rangeStr} ${ev.title}`;
+    }
+    return displayTitle;
+}
+
+// ⭐ 기간 일정 렌더링 범위 제한 완벽 수정
+function filteredEvents(periodStart, periodEnd) {
   const base = activeFilter === "all" ? events : events.filter(e => e.author === activeFilter);
   const expanded = [];
-  const monthStart = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-01`;
-  const monthEnd = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-${new Date(currentYear, currentMonth+1, 0).getDate()}`;
 
   base.forEach(ev => {
     let startDates = [];
     if (ev.repeatMaster) {
-      startDates = expandRepeatForMonth(ev, monthStart, monthEnd);
+      startDates = expandRepeatForMonth(ev, periodStart, periodEnd);
     } else {
       startDates = [ev.date];
     }
 
     startDates.forEach(sDate => {
       if (ev.isCompleted) {
-        expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
+        if (sDate >= periodStart && sDate <= periodEnd) {
+          expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
+        }
       } else if (ev.endDate && ev.endDate > ev.date) {
-        // 원래 일정의 전체 기간(일수)을 계산
-        const origStart = new Date(ev.date);
-        const origEnd = new Date(ev.endDate);
+        const origStart = new Date(ev.date + "T00:00:00");
+        const origEnd = new Date(ev.endDate + "T00:00:00");
         const durationDays = Math.round((origEnd - origStart) / 86400000);
 
-        let cur = new Date(sDate);
-        const end = new Date(sDate);
+        let cur = new Date(sDate + "T00:00:00");
+        const end = new Date(sDate + "T00:00:00");
         end.setDate(end.getDate() + durationDays);
+        const formattedEnd = toLocalISO(end);
 
         while (cur <= end) {
-          const dStr = cur.toISOString().slice(0,10);
-          // 현재 달력에 보이는 월(Month)에 포함되는 날짜만 화면에 추가
-          if (dStr >= monthStart && dStr <= monthEnd) {
-            expanded.push({ ...ev, date: dStr, _virtual: ev.repeatMaster, _multiDay: true });
+          const dStr = toLocalISO(cur);
+          if (dStr >= periodStart && dStr <= periodEnd) {
+            expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
           }
           cur.setDate(cur.getDate() + 1);
         }
       } else {
-        if (sDate >= monthStart && sDate <= monthEnd) {
+        if (sDate >= periodStart && sDate <= periodEnd) {
           expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
         }
       }
@@ -671,7 +682,7 @@ function filteredEvents() {
   return expanded;
 }
 
-function expandRepeatForMonth(ev, monthStart, monthEnd) {
+function expandRepeatForMonth(ev, periodStart, periodEnd) {
   const type = ev.repeatType;
   const days = ev.repeatDays || [];
   const start = ev.date;
@@ -680,26 +691,24 @@ function expandRepeatForMonth(ev, monthStart, monthEnd) {
 
   let durationDays = 0;
   if (ev.endDate && ev.endDate > ev.date) {
-    durationDays = Math.round((new Date(ev.endDate) - new Date(ev.date)) / 86400000);
+    durationDays = Math.round((new Date(ev.endDate + "T00:00:00") - new Date(ev.date + "T00:00:00")) / 86400000);
   }
 
-  // 기간이 있는 경우, 이전 달력 페이지에서도 선이 이어져 나오도록 시작일을 앞당겨서 스캔
-  let loopStart = new Date(monthStart);
+  let loopStart = new Date(periodStart + "T00:00:00");
   loopStart.setDate(loopStart.getDate() - durationDays);
-
-  let cur = new Date(loopStart);
-  const mEnd = new Date(monthEnd);
+  let cur = new Date(toLocalISO(loopStart) + "T00:00:00");
+  const mEnd = new Date(periodEnd + "T00:00:00");
 
   while (cur <= mEnd) {
-    const dateStr = cur.toISOString().slice(0,10);
+    const dateStr = toLocalISO(cur);
     if (dateStr < start || dateStr > end) { cur.setDate(cur.getDate()+1); continue; }
     const dow = cur.getDay();
 
     let match = false;
     if (type === "daily") match = true;
-    else if (type === "weekly") match = new Date(start).getDay() === dow;
+    else if (type === "weekly") match = new Date(start + "T00:00:00").getDay() === dow;
     else if (type === "weekday") match = days.includes(dow);
-    else if (type === "monthly") match = new Date(start).getDate() === cur.getDate();
+    else if (type === "monthly") match = new Date(start + "T00:00:00").getDate() === cur.getDate();
     else if (type === "yearly") match = start.slice(5) === dateStr.slice(5);
 
     const excluded = (ev.repeatExclude || []).includes(dateStr);
@@ -722,12 +731,16 @@ function renderCells() {
     el.className = "cell empty";
     container.appendChild(el);
   }
+  
+  const monthStart = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-01`;
+  const monthEnd = toLocalISO(new Date(currentYear, currentMonth+1, 0));
+  const evsToRender = filteredEvents(monthStart, monthEnd);
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
     const isToday = d === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear();
     const dow = new Date(currentYear, currentMonth, d).getDay();
-    const dayEvs = filteredEvents().filter(e => e.date === dateStr)
+    const dayEvs = evsToRender.filter(e => e.date === dateStr)
       .sort((a, b) => (a.time || "") > (b.time || "") ? 1 : -1);
 
     const cell = document.createElement("div");
@@ -769,7 +782,9 @@ function renderCells() {
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
       
-      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
+      const displayTitle = getDisplayTitle(ev);
+      
+      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${displayTitle}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
       cellTop.appendChild(chip);
     });
@@ -815,14 +830,29 @@ function renderCells() {
   ).join("");
 }
 
+// ⭐ 목록(List) 화면의 연간보기/월간보기 렌더링 로직
 function renderList() {
   const monthStr = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}`;
   const titleEl = document.getElementById("listMonthTitle");
-  if (titleEl) titleEl.textContent = `${currentYear}년 ${currentMonth+1}월`;
+  
+  const modeBtn = document.getElementById("listModeBtn");
+  if(modeBtn) modeBtn.textContent = listMode === "month" ? "🗓 연간 보기" : "📅 월간 보기";
 
-  const sorted = filteredEvents()
-    .filter(ev => ev.date.startsWith(monthStr))
-    .sort((a,b) => `${a.date}${a.time || ""}` > `${b.date}${b.time || ""}` ? 1 : -1);
+  if (titleEl) {
+      titleEl.textContent = listMode === "month" ? `${currentYear}년 ${currentMonth+1}월` : `${currentYear}년 전체 일정`;
+  }
+
+  let start, end;
+  if (listMode === "year") {
+      start = `${currentYear}-01-01`;
+      end = `${currentYear}-12-31`;
+  } else {
+      start = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-01`;
+      end = toLocalISO(new Date(currentYear, currentMonth+1, 0));
+  }
+
+  const evsToRender = filteredEvents(start, end);
+  const sorted = evsToRender.sort((a,b) => `${a.date}${a.time || ""}` > `${b.date}${b.time || ""}` ? 1 : -1);
 
   const container = document.getElementById("listItems");
   if (!sorted.length) {
@@ -839,14 +869,21 @@ function renderList() {
     const past = evTime < now;
     const isComp = ev.isCompleted;
     
+    const monthStrDisp = parseInt(ev.date.slice(5,7), 10);
+    const dayStr = parseInt(ev.date.slice(8,10), 10);
+    const dateDisplay = listMode === "year" ? `${monthStrDisp}/${dayStr}` : dayStr;
+    const dateFontSize = listMode === "year" ? "18px" : "22px";
+    
+    const displayTitle = getDisplayTitle(ev);
+    
     return `
       <div class="list-item" style="border-left:4px solid ${isComp ? '#94A3B8' : c.bg};opacity:${past||isComp?0.55:1}">
         <div style="text-align:center;min-width:38px">
           <div style="font-size:11px;color:#94A3B8;font-weight:700">${["일","월","화","수","목","금","토"][evTime.getDay()]}</div>
-          <div style="font-size:22px;font-weight:900;color:${evTime.getDay()===0?"#EF4444":evTime.getDay()===6?"#3B82F6":"#1E293B"};line-height:1.1">${ev.date.slice(8)}</div>
+          <div style="font-size:${dateFontSize};font-weight:900;color:${evTime.getDay()===0?"#EF4444":evTime.getDay()===6?"#3B82F6":"#1E293B"};line-height:1.1">${dateDisplay}</div>
         </div>
         <div class="list-info">
-          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
+          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${displayTitle}</div>
           <div class="list-meta">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:flex;align-items:center;gap:4px">
@@ -861,7 +898,12 @@ function renderList() {
   }).join("") : `<div style="background:#fff;border-radius:16px;padding:48px;text-align:center;color:var(--muted);font-size:15px">이 달에 등록된 일정이 없습니다.</div>`;
 }
 
-// ⭐ 날짜 선택 시 종료 날짜를 자동으로 맞춰주는 이벤트 리스너
+window.toggleListMode = function() {
+    listMode = listMode === "month" ? "year" : "month";
+    renderAll();
+};
+
+// ⭐ 날짜 선택 시 종료 날짜를 자동으로 맞춰주는 이벤트 리스너 (에러방지)
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("fDate").addEventListener("change", function() {
     const endEl = document.getElementById("fEndDate");
@@ -877,13 +919,12 @@ window.openAddModal = function(dateStr) {
   document.getElementById("modalTitle").textContent = "➕ 일정 추가";
   document.getElementById("fTitle").value = "";
   
-  // 날짜 설정
   document.getElementById("fDate").value = dateStr;
-  document.getElementById("fEndDate").value = dateStr; // 기본값을 시작일과 동일하게 세팅
-  document.getElementById("fEndDate").min = dateStr;   // 과거 선택 방지 (달력 열 때 오류 해결)
+  document.getElementById("fEndDate").value = dateStr; 
+  document.getElementById("fEndDate").min = dateStr;   
   
-  document.getElementById("fTime").value = "";
-  document.getElementById("fCategory").value = "remittance"; // 기본값: 송금
+  document.getElementById("fTime").value = ""; 
+  document.getElementById("fCategory").value = "remittance"; 
   document.getElementById("fDesc").value = "";
   document.getElementById("fRepeat").checked = false;
   document.getElementById("repeatRow").style.display = "none";
@@ -910,9 +951,9 @@ window.openEditModal = function(ev) {
   document.getElementById("modalTitle").textContent = "✏️ 일정 수정";
   document.getElementById("fTitle").value = ev.title;
   
-  document.getElementById("fDate").value = ev.date;
-  document.getElementById("fEndDate").value = ev.endDate || ev.date;
-  document.getElementById("fEndDate").min = ev.date;
+  document.getElementById("fDate").value = ev.origDate || ev.date;
+  document.getElementById("fEndDate").value = ev.origEndDate || ev.endDate || ev.origDate || ev.date;
+  document.getElementById("fEndDate").min = ev.origDate || ev.date;
   
   document.getElementById("fTime").value = ev.time || "";
   
@@ -952,10 +993,12 @@ window.openDayModal = function(dateStr, dayEvs) {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     const uc = userColor(ev.author || "?");
     const isComp = ev.isCompleted;
+    const displayTitle = getDisplayTitle(ev);
+    
     return `
       <div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${isComp ? '#94A3B8' : c.bg};display:flex;align-items:center;gap:10px; opacity:${isComp ? 0.7 : 1}">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
+          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${displayTitle}</div>
           <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${uc}"></span>
@@ -1066,7 +1109,6 @@ window.saveEvent = async function() {
     addToast("종료 날짜는 시작 날짜 이후여야 합니다.", "error"); return;
   }
 
-  // 시작일과 종료일이 같으면 굳이 endDate를 저장하지 않고 1일짜리 일정으로 처리
   if (endDate === date) endDate = "";
 
   const data = {
@@ -1096,7 +1138,7 @@ window.saveEvent = async function() {
     data.repeatGroupId = editingId || ("rg_" + Date.now());
     data.repeatStopped = false;
     data.repeatMaster = true;
-    data.endDate = endDate || null; 
+    data.endDate = endDate || null; // ⭐ 반복과 기간 설정을 함께 저장할 수 있게 수정
   } else {
     data.repeatMaster = false;
     data.repeatType = null;
@@ -1163,13 +1205,20 @@ window.deleteCurrentEvent = async function() {
 window.goToday = function() {
   currentYear = today.getFullYear();
   currentMonth = today.getMonth();
+  if (currentView === "list" && listMode === "year") {
+     // 연간보기 상태일 때는 연도만 현재로 맞춤
+  }
   renderAll();
 };
 
 window.changeMonth = function(dir) {
-  currentMonth += dir;
-  if (currentMonth < 0) { currentYear--; currentMonth = 11; }
-  if (currentMonth > 11) { currentYear++; currentMonth = 0; }
+  if (currentView === "list" && listMode === "year") {
+     currentYear += dir; // 연간 보기일 때는 화살표 누르면 1년씩 이동
+  } else {
+     currentMonth += dir;
+     if (currentMonth < 0) { currentYear--; currentMonth = 11; }
+     if (currentMonth > 11) { currentYear++; currentMonth = 0; }
+  }
   renderAll();
 };
 
@@ -1178,6 +1227,7 @@ window.toggleView = function() {
   document.getElementById("calView").style.display = currentView === "cal" ? "" : "none";
   document.getElementById("listView").style.display = currentView === "list" ? "" : "none";
   document.getElementById("viewToggleBtn").textContent = currentView === "cal" ? "📋 목록" : "📅 달력";
+  renderAll();
 };
 
 // ── 토스트 ────────────────────────────────────

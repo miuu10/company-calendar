@@ -26,7 +26,7 @@ header { background: var(--navy); color: #fff; padding: 0 32px; height: 64px; di
 .header-brand .icon { font-size: 24px; }
 .header-brand h1 { font-size: 18px; font-weight: 900; letter-spacing: -.5px; }
 .header-brand p { font-size: 11px; color: var(--muted); }
-.header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .user-chip { background: var(--navy3); color: #fff; border-radius: 20px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid #475569; }
 .user-chip:hover { background: #475569; }
 
@@ -339,7 +339,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp }
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ══════════════════════════════════════════════
@@ -455,18 +455,18 @@ function initFirebase() {
   }
 }
 
-// ⭐ [1] 기존 낱개 일정 묶어주기 기능 (DB 최적화)
+// ⭐ 1. 기존 DB 정리 묶어주기 버튼 (원클릭)
 window.mergeExistingEvents = async function() {
-  if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 정리합니다.\n(시간이 약간 걸릴 수 있습니다.) 진행하시겠습니까?")) return;
+  if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 깔끔하게 정리합니다.\n(중복 데이터도 모두 삭제됩니다.) 진행하시겠습니까?")) return;
 
   document.getElementById("loadingScreen").style.display = "flex";
   document.querySelector("#loadingText").textContent = "기존 일정들을 분석하여 병합 중입니다...";
 
   try {
-      // 일반 일정들만 필터링
-      let targets = events.filter(e => !e.repeatMaster && !e.isHoliday && !e.isCompleted);
+      const snap = await getDocs(eventsCol);
+      let dbEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let targets = dbEvents.filter(e => !e.repeatMaster && !e.isHoliday && !e.isCompleted);
       
-      // 제목+메모 기준으로 그룹화
       let groups = {};
       targets.forEach(ev => {
           let key = ev.title + "|" + (ev.description || "");
@@ -481,7 +481,6 @@ window.mergeExistingEvents = async function() {
           let group = groups[key];
           if(group.length <= 1) continue;
 
-          // 날짜순 정렬
           group.sort((a,b) => a.date.localeCompare(b.date));
 
           let currentBase = group[0];
@@ -492,19 +491,15 @@ window.mergeExistingEvents = async function() {
               let nextStart = nextEv.date;
               let nextEnd = nextEv.endDate || nextEv.date;
 
-              // 최대 5일 차이까지는 같은 묶음으로 처리 (주말 건너뜀 허용)
               let cEndObj = new Date(currentEnd+"T00:00:00");
               cEndObj.setDate(cEndObj.getDate() + 5); 
               let nextStartObj = new Date(nextStart+"T00:00:00");
 
               if (nextStartObj <= cEndObj) {
-                  // 범위 연장
                   if (nextEnd > currentEnd) currentEnd = nextEnd;
-                  // 중복된 문서는 삭제
                   await deleteDoc(doc(db, "events", nextEv.id));
                   deleteCount++;
               } else {
-                  // 간격이 너무 멀면 끊고 DB 업데이트
                   if (currentEnd !== (currentBase.endDate || currentBase.date)) {
                       await updateDoc(doc(db, "events", currentBase.id), { endDate: currentEnd });
                       updateCount++;
@@ -513,7 +508,6 @@ window.mergeExistingEvents = async function() {
                   currentEnd = nextEnd;
               }
           }
-          // 마지막 묶음 업데이트
           if (currentEnd !== (currentBase.endDate || currentBase.date)) {
               await updateDoc(doc(db, "events", currentBase.id), { endDate: currentEnd });
               updateCount++;
@@ -521,7 +515,7 @@ window.mergeExistingEvents = async function() {
       }
       
       document.getElementById("loadingScreen").style.display = "none";
-      addToast(`✅ 정리 완료! (지워진 중복: ${deleteCount}건 / 묶인 그룹: ${updateCount}건)`, "success");
+      addToast(`✅ 캘린더 정리 완료! (중복제거: ${deleteCount}건 / 묶인그룹: ${updateCount}건)`, "success");
   } catch(e) {
       console.error(e);
       document.getElementById("loadingScreen").style.display = "none";
@@ -529,7 +523,7 @@ window.mergeExistingEvents = async function() {
   }
 };
 
-// ⭐ [2] 엑셀 업로드 시 내부 병합 및 겹침 무시 로직 
+// ⭐ 2. 엑셀 업로드 시 중복 방지 및 자동 병합
 window.handleExcelUpload = async function(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -562,63 +556,57 @@ window.handleExcelUpload = async function(event) {
             }
 
             function extractTitleAndMemo(originalTitle) {
-                let cleanTitle = originalTitle;
+                let cleanTitle = String(originalTitle).trim();
                 let memoText = "";
-                const priceMatch = originalTitle.match(/(.*?)(?:\s*지급일)?\s*(\$[0-9,.]+)/);
+                const priceMatch = cleanTitle.match(/(.*?)(?:\s*지급일)?\s*(\$[0-9,.]+)/);
                 if (priceMatch) {
                     cleanTitle = priceMatch[1].trim(); 
                     memoText = priceMatch[2].trim();   
                 }
-                if (cleanTitle.toUpperCase().includes("ETA")) cleanTitle = cleanTitle.replace(/ETA/i, "입항");
-                if (cleanTitle.toUpperCase().includes("ETD")) cleanTitle = cleanTitle.replace(/ETD/i, "출항");
+                cleanTitle = cleanTitle.replace(/ETA/gi, "입항").replace(/ETD/gi, "출항");
                 return { cleanTitle, memoText, originalTitle };
             }
 
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
                 let d1 = parseExcelDate(row["J"]);
-                let t1 = String(row["L"] || "").trim();
+                let t1 = row["L"];
                 if (d1 && t1) {
                     let ex = extractTitleAndMemo(t1);
                     pendingEvents.push({ date: d1, title: ex.cleanTitle, memo: ex.memoText, original: ex.originalTitle });
                 }
                 let d2 = parseExcelDate(row["W"]);
-                let t2 = String(row["X"] || "").trim();
+                let t2 = row["X"];
                 if (d2 && t2) {
                     let ex = extractTitleAndMemo(t2);
                     pendingEvents.push({ date: d2, title: ex.cleanTitle, memo: ex.memoText, original: ex.originalTitle });
                 }
             }
 
-            // 제목, 메모가 같은 것끼리 날짜순 정렬
             pendingEvents.sort((a, b) => {
                 if (a.title !== b.title) return a.title.localeCompare(b.title);
                 if (a.memo !== b.memo) return a.memo.localeCompare(b.memo);
                 return a.date.localeCompare(b.date);
             });
 
-            // 엑셀 자체 내에서 주말 껴있는 날짜들을 하나의 범위로 묶기
             let mergedEvents = [];
             for (let p of pendingEvents) {
                 let last = mergedEvents.length > 0 ? mergedEvents[mergedEvents.length - 1] : null;
-                
                 if (last && last.title === p.title && last.description === p.memo) {
                     let lastEndObj = new Date(last.endDate + "T00:00:00");
-                    lastEndObj.setDate(lastEndObj.getDate() + 5); // 5일 이내면 같은 그룹으로 침
+                    lastEndObj.setDate(lastEndObj.getDate() + 5);
                     let pStartObj = new Date(p.date + "T00:00:00");
-                    
                     if (pStartObj <= lastEndObj) {
                         if (p.date > last.endDate) last.endDate = p.date;
                         continue;
                     }
                 }
-                
                 let category = "other";
-                if (p.original.includes("출항") || p.original.toUpperCase().includes("ETD")) category = "departure";
-                else if (p.original.includes("입항") || p.original.toUpperCase().includes("ETA")) category = "arrival";
-                else if (p.original.includes("입고")) category = "container";
-                else if (p.original.includes("생산완료")) category = "production";
-                else if (p.original.includes("잔금") || p.original.includes("선수금") || p.original.includes("지급") || p.original.includes("송금") || p.original.includes("$")) category = "remittance";
+                if (p.title.includes("출항")) category = "departure";
+                else if (p.title.includes("입항")) category = "arrival";
+                else if (p.title.includes("입고")) category = "container";
+                else if (p.title.includes("생산완료")) category = "production";
+                else if (p.title.includes("잔금") || p.title.includes("선수금") || p.title.includes("지급") || p.title.includes("송금") || p.title.includes("$")) category = "remittance";
 
                 mergedEvents.push({
                     title: p.title, date: p.date, endDate: p.date, time: "", category: category, description: p.memo,
@@ -796,6 +784,7 @@ function getDisplayTitle(ev) {
     return displayTitle;
 }
 
+// ⭐ 특정 카테고리는 공휴일 제외 로직에서 빠지도록 수정 완료!
 function filteredEvents(periodStart, periodEnd, isListView = false) {
   const base = activeFilter === "all" ? events : events.filter(e => e.author === activeFilter);
   const expanded = [];
@@ -821,7 +810,10 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
            while (cur <= end) {
              const dStr = toLocalISO(cur);
              const isHol = !!getDynamicHolidays(dStr).kr;
-             if (dStr >= periodStart && dStr <= periodEnd && !isHol) {
+             // ⭐ 생산완료, 입항, 출항, 출장 카테고리는 공휴일이어도 달력에 그려지도록 허용!
+             const skipHolidaySkip = ["production", "arrival", "departure", "biz_trip"].includes(ev.category);
+             
+             if (dStr >= periodStart && dStr <= periodEnd && (!isHol || skipHolidaySkip)) {
                expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
              }
              cur.setDate(cur.getDate() + 1);
@@ -859,8 +851,10 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
 
     const excluded = (ev.repeatExclude || []).includes(dateStr);
     const isHol = !!getDynamicHolidays(dateStr).kr;
+    // ⭐ 반복 일정에서도 위 4개 카테고리는 공휴일을 건너뛰지 않음!
+    const skipHolidaySkip = ["production", "arrival", "departure", "biz_trip"].includes(ev.category);
 
-    if (match && !excluded && !isHol) results.push(dateStr);
+    if (match && !excluded && (!isHol || skipHolidaySkip)) results.push(dateStr);
     cur.setDate(cur.getDate()+1);
   }
   return results;

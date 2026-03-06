@@ -6,6 +6,7 @@
 <title>온메디칼 캘린더</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root { --navy: #0F172A; --navy2: #1E293B; --navy3: #334155; --slate: #64748B; --muted: #94A3B8; --border: #E2E8F0; --bg: #F1F5F9; --white: #FFFFFF; --blue: #3B82F6; --red: #EF4444; --green: #10B981; --yellow: #F59E0B; --purple: #8B5CF6; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -21,7 +22,7 @@ header { background: var(--navy); color: #fff; padding: 0 32px; height: 64px; di
 .header-brand .icon { font-size: 24px; }
 .header-brand h1 { font-size: 18px; font-weight: 900; letter-spacing: -.5px; }
 .header-brand p { font-size: 11px; color: var(--muted); }
-.header-right { display: flex; align-items: center; gap: 10px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .user-chip { background: var(--navy3); color: #fff; border-radius: 20px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid #475569; }
 .user-chip:hover { background: #475569; }
 .btn { border: none; border-radius: 10px; padding: 8px 16px; cursor: pointer; font-weight: 700; font-size: 13px; font-family: inherit; transition: all .15s; }
@@ -92,9 +93,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
 @media (max-width: 768px) {
-  header { padding: 0 14px; height: 56px; }
+  header { padding: 0 14px; height: 56px; flex-wrap: wrap; }
   .header-brand h1 { font-size: 15px; }
   .header-brand p { display: none; }
+  .header-right { gap: 5px; }
   main { padding: 14px 8px 32px; }
   .cal-nav h2 { font-size: 20px; }
   .cell { min-height: 60px; padding: 4px 2px; }
@@ -112,6 +114,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 </style>
 </head>
 <body>
+
+<input type="file" id="excelUpload" accept=".xlsx, .xls, .xlsm" style="display:none" onchange="handleExcelUpload(event)">
 
 <div class="loading-screen" id="loadingScreen">
   <div class="logo">📅</div>
@@ -139,6 +143,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     </div>
   </div>
   <div class="header-right">
+    <button class="btn btn-ghost" onclick="document.getElementById('excelUpload').click()" style="font-size:12px; padding:6px 10px; background:#ECFEFF; color:#0E7490; border-color:#A5F3FC;">📥 엑셀 업로드</button>
     <button class="btn btn-ghost" onclick="syncHolidays()" style="font-size:12px; padding:6px 10px; background:#FFFBEB; color:#B45309; border-color:#FDE68A;">🔄 휴일 자동수집</button>
     <button class="btn btn-ghost" id="viewToggleBtn" onclick="toggleView()" style="font-size:12px; padding:6px 10px;">📋 목록</button>
     <div class="user-chip" onclick="changeName()" title="이름 변경">
@@ -439,6 +444,118 @@ function initFirebase() {
   }
 }
 
+// ⭐ 엑셀 업로드 처리 함수 (똑똑한 제목-메모 자동 분리 로직 탑재!)
+window.handleExcelUpload = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    document.getElementById("loadingScreen").style.display = "flex";
+    document.querySelector("#loadingText").textContent = "엑셀 데이터를 분석하여 등록 중입니다...";
+
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+
+            // '일정관리' 시트 확인, 없으면 1번째 시트 열기
+            const sheetName = workbook.SheetNames.includes("일정관리") ? "일정관리" : workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+
+            // 날짜를 정확히 빼오기 위해 raw 모드 활성화 (엑셀의 날짜 고유 번호를 숫자로 가져옴)
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: "A", raw: true, defval: ""});
+
+            let newCount = 0;
+            let skipCount = 0;
+
+            // 엑셀 날짜 형식을 표준 날짜로 바꿔주는 함수
+            function parseExcelDate(val) {
+                if (!val) return null;
+                // 엑셀 고유 숫자(Serial Date)일 경우
+                if (typeof val === 'number') {
+                    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+                }
+                // 문자열(ex: 2026-03-05)일 경우
+                let dStr = String(val).trim().replace(/[\.\/]/g, '-').replace(/\s/g, '');
+                if (dStr.endsWith('-')) dStr = dStr.slice(0, -1);
+                const match = dStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+                if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+                return null;
+            }
+
+            // 개별 행 처리 함수
+            async function processExcelRow(dateVal, titleVal) {
+                const cleanDate = parseExcelDate(dateVal);
+                const originalTitle = String(titleVal).trim();
+                
+                if (!cleanDate || !originalTitle) return;
+
+                let cleanTitle = originalTitle;
+                let memoText = "";
+
+                // ⭐ 텍스트 분리 인공지능 로직 ("지급일 $금액" 패턴을 귀신같이 찾아냄)
+                const priceMatch = originalTitle.match(/(.*?)(?:\s*지급일)?\s*(\$[0-9,.]+)/);
+                if (priceMatch) {
+                    cleanTitle = priceMatch[1].trim();   // "ST251002 잔금" 만 쏙 빼옴
+                    memoText = priceMatch[2].trim();     // "$23664" 만 쏙 빼옴
+                }
+
+                // 중복 체크 로직
+                const exists = events.find(ev => ev.date === cleanDate && ev.title === cleanTitle);
+                if (exists) {
+                    skipCount++;
+                    return;
+                }
+
+                // 카테고리 자동 판별
+                let category = "other";
+                if (originalTitle.includes("출항") || originalTitle.toUpperCase().includes("ETD")) category = "departure";
+                else if (originalTitle.includes("입항") || originalTitle.toUpperCase().includes("ETA")) category = "arrival";
+                else if (originalTitle.includes("입고")) category = "container";
+                else if (originalTitle.includes("잔금") || originalTitle.includes("선수금") || originalTitle.includes("지급") || originalTitle.includes("송금") || originalTitle.includes("$")) category = "remittance";
+
+                const newEvent = {
+                    title: cleanTitle,
+                    date: cleanDate,
+                    endDate: null,
+                    time: "",
+                    category: category,
+                    description: memoText, // 분리된 금액이 여기에 들어감!
+                    alarm: false,
+                    alarmMinutes: 10,
+                    author: currentUser,
+                    repeatMaster: false,
+                    isCompleted: false,
+                    createdAt: serverTimestamp()
+                };
+
+                await addDoc(eventsCol, newEvent);
+                newCount++;
+            }
+
+            // 첫 번째 줄(제목) 건너뛰고 2번째 줄부터 분석 시작
+            for (let i = 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                await processExcelRow(row["J"], row["L"]); // 일정 / 일정명
+                await processExcelRow(row["W"], row["X"]); // 메모일 / 메모
+            }
+
+            document.getElementById("loadingScreen").style.display = "none";
+            addToast(`✅ 엑셀 업로드 완료! (추가: ${newCount}개 / 중복제외: ${skipCount}개)`, "success");
+
+            // 업로드 버튼 초기화 (같은 파일 다시 올릴 수 있게)
+            document.getElementById('excelUpload').value = '';
+
+        } catch (error) {
+            console.error(error);
+            alert("엑셀 파일을 처리하는 중 오류가 발생했습니다. 파일이 열려있다면 닫고 올려주세요.");
+            document.getElementById("loadingScreen").style.display = "none";
+        }
+    };
+    reader.readAsArrayBuffer(file);
+};
+
 window.syncHolidays = async function() {
   const year = prompt("자동으로 불러올 연도를 입력하세요 (예: 2026)", currentYear);
   if (!year) return;
@@ -576,7 +693,7 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
   const expanded = [];
 
   base.forEach(ev => {
-    if (ev.isHoliday) return;
+    if (ev.isHoliday) return; 
 
     let startDates = ev.repeatMaster ? expandRepeatForMonth(ev, periodStart, periodEnd) : [ev.date];
 
@@ -694,6 +811,7 @@ function renderCells() {
       const iconStr = ev.isCompleted ? "✅ " : (ev.alarm && ev.time ? "🔔" : "");
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
+      
       chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
       cellTop.appendChild(chip);
@@ -745,12 +863,15 @@ function renderList() {
   const now = new Date();
   container.innerHTML = sorted.map(ev => {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
+    const uc = userColor(ev.author || "?");
     
     const targetDateStr = (ev._isRange && ev.endDate) ? ev.endDate : ev.date;
     const evTime = ev.time ? new Date(`${targetDateStr}T${ev.time}`) : new Date(`${targetDateStr}T23:59:59`);
     const past = evTime < now;
     
+    const isComp = ev.isCompleted;
     let dateBoxHtml = '';
+    
     if (ev._isRange) {
         const sm = parseInt(ev.date.slice(5,7), 10), sd = parseInt(ev.date.slice(8,10), 10);
         const em = parseInt(ev.endDate.slice(5,7), 10), ed = parseInt(ev.endDate.slice(8,10), 10);
@@ -761,13 +882,13 @@ function renderList() {
     }
     
     return `
-      <div class="list-item" style="border-left:4px solid ${ev.isCompleted ? '#94A3B8' : c.bg};opacity:${past||ev.isCompleted?0.55:1}">
+      <div class="list-item" style="border-left:4px solid ${isComp ? '#94A3B8' : c.bg};opacity:${past||isComp?0.55:1}">
         <div style="text-align:center;min-width:48px;">${dateBoxHtml}</div>
         <div class="list-info">
-          <div class="list-title" style="${ev.isCompleted ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${ev.isCompleted?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
-          <div class="list-meta">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:flex;align-items:center;gap:4px"><span class="author-dot" style="background:${userColor(ev.author||"?")}"></span>${ev.author || "?"}</span>${ev.description ? `<span style="color:var(--muted)">${ev.description}</span>` : ""}</div>
+          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
+          <div class="list-meta">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:flex;align-items:center;gap:4px"><span class="author-dot" style="background:${uc}"></span>${ev.author || "?"}</span>${ev.description ? `<span style="color:var(--muted)">${ev.description}</span>` : ""}</div>
         </div>
-        <span class="cat-pill" style="background:${ev.isCompleted ? '#F1F5F9' : c.light};color:${ev.isCompleted ? '#64748B' : c.text}">${c.label}</span>
+        <span class="cat-pill" style="background:${isComp ? '#F1F5F9' : c.light};color:${isComp ? '#64748B' : c.text}">${c.label}</span>
         <button class="btn btn-ghost" style="flex:0;padding:6px 12px;font-size:12px" onclick='openEditModal(${JSON.stringify(ev).replace(/'/g,"&apos;")})'>수정</button>
       </div>`;
   }).join("");

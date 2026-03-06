@@ -477,7 +477,7 @@ function toLocalISO(d) {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ⭐ 요청하신 8개 카테고리 순서대로 정렬 + 이전 데이터 오류 방지
+// ⭐ 카테고리
 const CATS = {
   remittance:     { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "송금" },
   departure:      { bg: "#DB2777", light: "#FDF2F8", text: "#BE185D", label: "출항" },
@@ -505,7 +505,7 @@ let currentYear, currentMonth;
 let editingId = null;
 let currentEditDate = null;
 let currentView = "cal";
-let listMode = "year"; // ⭐ 연간보기 모드 기본값으로 변경
+let listMode = "year"; // ⭐ 연간보기 모드 기본값으로 설정
 let currentUser = localStorage.getItem("calendarUser") || "";
 let activeFilter = "all";
 let firedAlarms = JSON.parse(localStorage.getItem("firedAlarms") || "{}");
@@ -632,21 +632,6 @@ window.setFilter = function(val) {
   renderAll();
 };
 
-// ⭐ 날짜 범위 파싱하여 달력 칩용 제목을 만드는 함수
-function getDisplayTitle(ev) {
-    let displayTitle = ev.title;
-    if (ev.endDate && ev.endDate > ev.date) {
-        const oStart = ev.origDate || ev.date;
-        const oEnd = ev.origEndDate || ev.endDate;
-        const sm = oStart.slice(5,7), sd = oStart.slice(8,10);
-        const em = oEnd.slice(5,7), ed = oEnd.slice(8,10);
-        const rangeStr = (sm === em) ? `${sd}~${ed}` : `${sm}/${sd}~${em}/${ed}`;
-        displayTitle = `${rangeStr} ${ev.title}`;
-    }
-    return displayTitle;
-}
-
-// ⭐ 기간 일정 렌더링 (공휴일 제외 처리 완벽 적용)
 function filteredEvents(periodStart, periodEnd, isListView = false) {
   const base = activeFilter === "all" ? events : events.filter(e => e.author === activeFilter);
   const expanded = [];
@@ -667,12 +652,10 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
       } else if (ev.endDate && ev.endDate > ev.date) {
         
         if (isListView) {
-           // ⭐ 목록 뷰: 기간 내에 걸쳐있으면 딱 1번만 추가함
            if (sDate <= periodEnd && ev.endDate >= periodStart) {
              expanded.push({ ...ev, date: sDate, _isRange: true });
            }
         } else {
-           // ⭐ 달력 뷰: 날짜별 칸에 다 들어가야 하니 쪼개서 추가하되 공휴일 제외
            const origStart = new Date(ev.date + "T00:00:00");
            const origEnd = new Date(ev.endDate + "T00:00:00");
            const durationDays = Math.round((origEnd - origStart) / 86400000);
@@ -684,7 +667,7 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
 
            while (cur <= end) {
              const dStr = toLocalISO(cur);
-             const isHoliday = !!getHolidayName(dStr); // 공휴일 판별
+             const isHoliday = !!getHolidayName(dStr);
              
              if (dStr >= periodStart && dStr <= periodEnd && !isHoliday) {
                expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
@@ -732,7 +715,7 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
     else if (type === "yearly") match = start.slice(5) === dateStr.slice(5);
 
     const excluded = (ev.repeatExclude || []).includes(dateStr);
-    const isHoliday = !!getHolidayName(dateStr); // ⭐ 공휴일 제외 로직
+    const isHoliday = !!getHolidayName(dateStr);
 
     if (match && !excluded && !isHoliday) results.push(dateStr);
     cur.setDate(cur.getDate()+1);
@@ -755,7 +738,6 @@ function renderCells() {
   const monthStart = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-01`;
   const monthEnd = toLocalISO(new Date(currentYear, currentMonth+1, 0));
   
-  // 달력용으로 렌더링 호출 (분할 됨)
   const evsToRender = filteredEvents(monthStart, monthEnd, false);
 
   for (let d = 1; d <= daysInMonth; d++) {
@@ -804,9 +786,7 @@ function renderCells() {
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
       
-      const displayTitle = getDisplayTitle(ev);
-      
-      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${displayTitle}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
+      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
       cellTop.appendChild(chip);
     });
@@ -852,7 +832,6 @@ function renderCells() {
   ).join("");
 }
 
-// ⭐ 목록(List) 화면의 연간보기/월간보기 렌더링 로직
 function renderList() {
   const monthStr = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}`;
   const titleEl = document.getElementById("listMonthTitle");
@@ -873,7 +852,6 @@ function renderList() {
       end = toLocalISO(new Date(currentYear, currentMonth+1, 0));
   }
 
-  // ⭐ 목록용으로 렌더링 호출 (isListView = true -> 기간일정 합쳐서 1개로)
   const evsToRender = filteredEvents(start, end, true);
   const sorted = evsToRender.sort((a,b) => `${a.date}${a.time || ""}` > `${b.date}${b.time || ""}` ? 1 : -1);
 
@@ -884,19 +862,19 @@ function renderList() {
   }
 
   const now = new Date();
+  
   container.innerHTML = sorted.length ? sorted.map(ev => {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     const uc = userColor(ev.author || "?");
     
-    // ⭐ 기간 일정이면 종료일(endDate) 기준으로 과거(흐림) 판별
+    // ⭐ [버그 수정] 기간 일정의 경우 종료일(endDate)을 기준으로 과거(흐림) 여부를 판별합니다!
     const targetDateStr = (ev._isRange && ev.endDate) ? ev.endDate : ev.date;
     const evTime = ev.time ? new Date(`${targetDateStr}T${ev.time}`) : new Date(`${targetDateStr}T23:59:59`);
     const past = evTime < now;
-    const isComp = ev.isCompleted;
     
+    const isComp = ev.isCompleted;
     let dateBoxHtml = '';
     
-    // ⭐ 기간 설정된 일정이면 왼쪽에 범위로 묶어서 1줄로 표시, 제목 앞에는 글자 안붙음!
     if (ev._isRange) {
         const sm = parseInt(ev.date.slice(5,7), 10);
         const sd = parseInt(ev.date.slice(8,10), 10);
@@ -915,7 +893,6 @@ function renderList() {
         const dateDisplay = listMode === "year" ? `${monthStrDisp}/${dayStr}` : dayStr;
         const dateFontSize = listMode === "year" ? "18px" : "22px";
         
-        // 단일 일정일 때는 시작일의 요일을 계산
         const singleDateObj = ev.time ? new Date(`${ev.date}T${ev.time}`) : new Date(`${ev.date}T00:00:00`);
         const dayOfWeek = ["일","월","화","수","목","금","토"][singleDateObj.getDay()];
         const dayColor = singleDateObj.getDay() === 0 ? "#EF4444" : singleDateObj.getDay() === 6 ? "#3B82F6" : "#1E293B";
@@ -952,7 +929,6 @@ window.toggleListMode = function() {
     renderAll();
 };
 
-// ⭐ 날짜 선택 시 종료 날짜를 자동으로 맞춰주는 이벤트 리스너
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("fDate").addEventListener("change", function() {
     const endEl = document.getElementById("fEndDate");
@@ -982,7 +958,6 @@ window.openAddModal = function(dateStr) {
   document.getElementById("fRepeatEnd").value = "";
   document.querySelectorAll(".dow-check").forEach(c => c.checked = false);
   
-  // ⭐ 알람 설정 기본값 해제
   document.getElementById("fAlarm").checked = false;
   document.getElementById("fAlarmMin").value = "10";
   document.getElementById("alarmTimingRow").style.display = "none";
@@ -1044,12 +1019,11 @@ window.openDayModal = function(dateStr, dayEvs) {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     const uc = userColor(ev.author || "?");
     const isComp = ev.isCompleted;
-    const displayTitle = getDisplayTitle(ev);
     
     return `
       <div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${isComp ? '#94A3B8' : c.bg};display:flex;align-items:center;gap:10px; opacity:${isComp ? 0.7 : 1}">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${displayTitle}</div>
+          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${uc}"></span>

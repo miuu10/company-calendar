@@ -26,7 +26,7 @@ header { background: var(--navy); color: #fff; padding: 0 32px; height: 64px; di
 .header-brand .icon { font-size: 24px; }
 .header-brand h1 { font-size: 18px; font-weight: 900; letter-spacing: -.5px; }
 .header-brand p { font-size: 11px; color: var(--muted); }
-.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .user-chip { background: var(--navy3); color: #fff; border-radius: 20px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid #475569; }
 .user-chip:hover { background: #475569; }
 
@@ -101,10 +101,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
 @media (max-width: 768px) {
-  header { padding: 0 14px; height: 56px; flex-wrap: wrap; }
+  header { padding: 0 14px; height: auto; padding-top:10px; padding-bottom:10px; flex-direction:column; gap:10px; align-items:flex-start;}
   .header-brand h1 { font-size: 15px; }
   .header-brand p { display: none; }
-  .header-right { gap: 5px; }
+  .header-right { gap: 5px; width:100%; justify-content:space-between; }
   main { padding: 14px 8px 32px; }
   .cal-nav h2 { font-size: 20px; }
   .cell { min-height: 60px; padding: 4px 2px; }
@@ -151,6 +151,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     </div>
   </div>
   <div class="header-right">
+    <button class="btn btn-ghost" onclick="mergeExistingEvents()" style="font-size:12px; padding:6px 10px; background:#F1F5F9; color:#475569; border-color:#CBD5E1;">🧹 기존 일정 통합</button>
     <button class="btn btn-ghost" onclick="document.getElementById('excelUpload').click()" style="font-size:12px; padding:6px 10px; background:#ECFEFF; color:#0E7490; border-color:#A5F3FC;">📥 엑셀 업로드</button>
     <button class="btn btn-ghost" onclick="syncHolidays()" style="font-size:12px; padding:6px 10px; background:#FFFBEB; color:#B45309; border-color:#FDE68A;">🔄 휴일 자동수집</button>
     <button class="btn btn-ghost" id="viewToggleBtn" onclick="toggleView()" style="font-size:12px; padding:6px 10px;">📋 목록</button>
@@ -399,7 +400,6 @@ function getDynamicHolidays(dateStr) {
   return { kr, isSub, foreign };
 }
 
-// ⭐ 생산완료(노랑) 카테고리 추가 완료
 const CATS = {
   remittance:     { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "송금" },
   departure:      { bg: "#DB2777", light: "#FDF2F8", text: "#BE185D", label: "출항" },
@@ -455,26 +455,98 @@ function initFirebase() {
   }
 }
 
+// ⭐ [1] 기존 낱개 일정 묶어주기 기능 (DB 최적화)
+window.mergeExistingEvents = async function() {
+  if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 정리합니다.\n(시간이 약간 걸릴 수 있습니다.) 진행하시겠습니까?")) return;
+
+  document.getElementById("loadingScreen").style.display = "flex";
+  document.querySelector("#loadingText").textContent = "기존 일정들을 분석하여 병합 중입니다...";
+
+  try {
+      // 일반 일정들만 필터링
+      let targets = events.filter(e => !e.repeatMaster && !e.isHoliday && !e.isCompleted);
+      
+      // 제목+메모 기준으로 그룹화
+      let groups = {};
+      targets.forEach(ev => {
+          let key = ev.title + "|" + (ev.description || "");
+          if(!groups[key]) groups[key] = [];
+          groups[key].push(ev);
+      });
+
+      let deleteCount = 0;
+      let updateCount = 0;
+
+      for (let key in groups) {
+          let group = groups[key];
+          if(group.length <= 1) continue;
+
+          // 날짜순 정렬
+          group.sort((a,b) => a.date.localeCompare(b.date));
+
+          let currentBase = group[0];
+          let currentEnd = currentBase.endDate || currentBase.date;
+
+          for(let i=1; i<group.length; i++) {
+              let nextEv = group[i];
+              let nextStart = nextEv.date;
+              let nextEnd = nextEv.endDate || nextEv.date;
+
+              // 최대 5일 차이까지는 같은 묶음으로 처리 (주말 건너뜀 허용)
+              let cEndObj = new Date(currentEnd+"T00:00:00");
+              cEndObj.setDate(cEndObj.getDate() + 5); 
+              let nextStartObj = new Date(nextStart+"T00:00:00");
+
+              if (nextStartObj <= cEndObj) {
+                  // 범위 연장
+                  if (nextEnd > currentEnd) currentEnd = nextEnd;
+                  // 중복된 문서는 삭제
+                  await deleteDoc(doc(db, "events", nextEv.id));
+                  deleteCount++;
+              } else {
+                  // 간격이 너무 멀면 끊고 DB 업데이트
+                  if (currentEnd !== (currentBase.endDate || currentBase.date)) {
+                      await updateDoc(doc(db, "events", currentBase.id), { endDate: currentEnd });
+                      updateCount++;
+                  }
+                  currentBase = nextEv;
+                  currentEnd = nextEnd;
+              }
+          }
+          // 마지막 묶음 업데이트
+          if (currentEnd !== (currentBase.endDate || currentBase.date)) {
+              await updateDoc(doc(db, "events", currentBase.id), { endDate: currentEnd });
+              updateCount++;
+          }
+      }
+      
+      document.getElementById("loadingScreen").style.display = "none";
+      addToast(`✅ 정리 완료! (지워진 중복: ${deleteCount}건 / 묶인 그룹: ${updateCount}건)`, "success");
+  } catch(e) {
+      console.error(e);
+      document.getElementById("loadingScreen").style.display = "none";
+      addToast("정리 중 오류가 발생했습니다.", "error");
+  }
+};
+
+// ⭐ [2] 엑셀 업로드 시 내부 병합 및 겹침 무시 로직 
 window.handleExcelUpload = async function(event) {
     const file = event.target.files[0];
     if (!file) return;
 
     document.getElementById("loadingScreen").style.display = "flex";
-    document.querySelector("#loadingText").textContent = "엑셀 데이터를 분석하여 등록 중입니다...";
+    document.querySelector("#loadingText").textContent = "엑셀 데이터를 분석하여 병합 중입니다...";
 
     const reader = new FileReader();
     reader.onload = async function(e) {
         try {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {type: 'array'});
-
             const sheetName = workbook.SheetNames.includes("일정관리") ? "일정관리" : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
-
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: "A", raw: true, defval: ""});
 
-            let newCount = 0;
-            let skipCount = 0;
+            let pendingEvents = [];
 
             function parseExcelDate(val) {
                 if (!val) return null;
@@ -489,62 +561,98 @@ window.handleExcelUpload = async function(event) {
                 return null;
             }
 
-            async function processExcelRow(dateVal, titleVal) {
-                const cleanDate = parseExcelDate(dateVal);
-                const originalTitle = String(titleVal).trim();
-                
-                if (!cleanDate || !originalTitle) return;
-
+            function extractTitleAndMemo(originalTitle) {
                 let cleanTitle = originalTitle;
                 let memoText = "";
-
                 const priceMatch = originalTitle.match(/(.*?)(?:\s*지급일)?\s*(\$[0-9,.]+)/);
                 if (priceMatch) {
                     cleanTitle = priceMatch[1].trim(); 
                     memoText = priceMatch[2].trim();   
                 }
-
-                const exists = events.find(ev => ev.date === cleanDate && ev.title === cleanTitle);
-                if (exists) {
-                    skipCount++;
-                    return;
-                }
-
-                let category = "other";
-                if (originalTitle.includes("출항") || originalTitle.toUpperCase().includes("ETD")) category = "departure";
-                else if (originalTitle.includes("입항") || originalTitle.toUpperCase().includes("ETA")) category = "arrival";
-                else if (originalTitle.includes("입고")) category = "container";
-                else if (originalTitle.includes("생산완료")) category = "production";
-                else if (originalTitle.includes("잔금") || originalTitle.includes("선수금") || originalTitle.includes("지급") || originalTitle.includes("송금") || originalTitle.includes("$")) category = "remittance";
-
-                const newEvent = {
-                    title: cleanTitle,
-                    date: cleanDate,
-                    endDate: null,
-                    time: "",
-                    category: category,
-                    description: memoText, 
-                    alarm: false,
-                    alarmMinutes: 10,
-                    author: currentUser,
-                    repeatMaster: false,
-                    isCompleted: false,
-                    createdAt: serverTimestamp()
-                };
-
-                await addDoc(eventsCol, newEvent);
-                newCount++;
+                if (cleanTitle.toUpperCase().includes("ETA")) cleanTitle = cleanTitle.replace(/ETA/i, "입항");
+                if (cleanTitle.toUpperCase().includes("ETD")) cleanTitle = cleanTitle.replace(/ETD/i, "출항");
+                return { cleanTitle, memoText, originalTitle };
             }
 
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
-                await processExcelRow(row["J"], row["L"]); 
-                await processExcelRow(row["W"], row["X"]); 
+                let d1 = parseExcelDate(row["J"]);
+                let t1 = String(row["L"] || "").trim();
+                if (d1 && t1) {
+                    let ex = extractTitleAndMemo(t1);
+                    pendingEvents.push({ date: d1, title: ex.cleanTitle, memo: ex.memoText, original: ex.originalTitle });
+                }
+                let d2 = parseExcelDate(row["W"]);
+                let t2 = String(row["X"] || "").trim();
+                if (d2 && t2) {
+                    let ex = extractTitleAndMemo(t2);
+                    pendingEvents.push({ date: d2, title: ex.cleanTitle, memo: ex.memoText, original: ex.originalTitle });
+                }
+            }
+
+            // 제목, 메모가 같은 것끼리 날짜순 정렬
+            pendingEvents.sort((a, b) => {
+                if (a.title !== b.title) return a.title.localeCompare(b.title);
+                if (a.memo !== b.memo) return a.memo.localeCompare(b.memo);
+                return a.date.localeCompare(b.date);
+            });
+
+            // 엑셀 자체 내에서 주말 껴있는 날짜들을 하나의 범위로 묶기
+            let mergedEvents = [];
+            for (let p of pendingEvents) {
+                let last = mergedEvents.length > 0 ? mergedEvents[mergedEvents.length - 1] : null;
+                
+                if (last && last.title === p.title && last.description === p.memo) {
+                    let lastEndObj = new Date(last.endDate + "T00:00:00");
+                    lastEndObj.setDate(lastEndObj.getDate() + 5); // 5일 이내면 같은 그룹으로 침
+                    let pStartObj = new Date(p.date + "T00:00:00");
+                    
+                    if (pStartObj <= lastEndObj) {
+                        if (p.date > last.endDate) last.endDate = p.date;
+                        continue;
+                    }
+                }
+                
+                let category = "other";
+                if (p.original.includes("출항") || p.original.toUpperCase().includes("ETD")) category = "departure";
+                else if (p.original.includes("입항") || p.original.toUpperCase().includes("ETA")) category = "arrival";
+                else if (p.original.includes("입고")) category = "container";
+                else if (p.original.includes("생산완료")) category = "production";
+                else if (p.original.includes("잔금") || p.original.includes("선수금") || p.original.includes("지급") || p.original.includes("송금") || p.original.includes("$")) category = "remittance";
+
+                mergedEvents.push({
+                    title: p.title, date: p.date, endDate: p.date, time: "", category: category, description: p.memo,
+                    alarm: false, alarmMinutes: 10, author: currentUser, repeatMaster: false, isCompleted: false
+                });
+            }
+
+            let newCount = 0;
+            let skipCount = 0;
+
+            for (let m of mergedEvents) {
+                if (m.date === m.endDate) m.endDate = ""; 
+                
+                // ⭐ DB 내 완벽 중복/겹침 검사
+                let isOverlap = events.some(ev => {
+                    if (ev.title !== m.title) return false; 
+                    let evStart = ev.date;
+                    let evEnd = ev.endDate || ev.date;
+                    let mStart = m.date;
+                    let mEnd = m.endDate || m.date;
+                    // 기간이 하루라도 겹치면 패스
+                    return (mStart <= evEnd && mEnd >= evStart);
+                });
+
+                if (isOverlap) {
+                    skipCount++;
+                } else {
+                    await addDoc(eventsCol, { ...m, createdAt: serverTimestamp() });
+                    newCount++;
+                }
             }
 
             document.getElementById("loadingScreen").style.display = "none";
-            addToast(`✅ 엑셀 업로드 완료! (추가: ${newCount}개 / 중복제외: ${skipCount}개)`, "success");
-
+            addToast(`✅ 엑셀 자동 병합 업로드 완료! (추가: ${newCount}개 / 중복 제외: ${skipCount}개)`, "success");
             document.getElementById('excelUpload').value = '';
 
         } catch (error) {
@@ -918,7 +1026,6 @@ window.openAddModal = function(dateStr) {
   setTimeout(() => document.getElementById("fTitle").focus(), 100);
 };
 
-// ⭐ 삭제 버튼 복구 완료!
 window.openEditModal = function(ev) {
   editingId = ev.id; currentEditDate = ev.date;
   document.getElementById("modalTitle").textContent = "✏️ 일정 수정";
@@ -931,9 +1038,8 @@ window.openEditModal = function(ev) {
   document.querySelectorAll(".dow-check").forEach(c => c.checked = ev.repeatType === "weekday" && (ev.repeatDays || []).includes(Number(c.value)));
   document.getElementById("fAlarm").checked = ev.alarm; document.getElementById("alarmTimingRow").style.display = ev.alarm ? "flex" : "none";
   
-  // 버튼들 보이기 세팅
   document.getElementById("modalActionTop").style.display = "flex"; 
-  document.getElementById("deleteBtn").style.display = "block"; // 👈 삭제 버튼 다시 켰습니다!
+  document.getElementById("deleteBtn").style.display = "block"; 
   document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none"; 
   document.getElementById("completeBtn").style.display = !ev.isCompleted ? "block" : "none";
   

@@ -336,7 +336,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
         <input type="checkbox" id="fAlarm" onchange="toggleAlarmUI()" />
         🔔 알람 설정 <span style="font-size:11px;color:var(--slate);font-weight:400">(시간 지정 시에만 울림)</span>
       </label>
-      <div class="alarm-timing" id="alarmTimingRow">
+      <div class="alarm-timing" id="alarmTimingRow" style="display:none;">
         <span>시작</span>
         <select class="form-input" id="fAlarmMin" style="width:auto;padding:5px 10px">
           <option value="5">5분 전</option>
@@ -632,22 +632,9 @@ window.setFilter = function(val) {
   renderAll();
 };
 
-// ⭐ 날짜 범위 파싱하여 화면용 제목을 만드는 함수
-function getDisplayTitle(ev) {
-    let displayTitle = ev.title;
-    if (ev.endDate && ev.endDate > ev.date) {
-        const oStart = ev.origDate || ev.date;
-        const oEnd = ev.origEndDate || ev.endDate;
-        const sm = oStart.slice(5,7), sd = oStart.slice(8,10);
-        const em = oEnd.slice(5,7), ed = oEnd.slice(8,10);
-        const rangeStr = (sm === em) ? `${sd}~${ed}` : `${sm}/${sd}~${em}/${ed}`;
-        displayTitle = `${rangeStr} ${ev.title}`;
-    }
-    return displayTitle;
-}
 
-// ⭐ 기간 일정 렌더링 범위 제한 완벽 수정
-function filteredEvents(periodStart, periodEnd) {
+// ⭐ 기간 일정 렌더링 (목록 뷰에서는 1줄로 병합되게 완벽 분리)
+function filteredEvents(periodStart, periodEnd, isListView = false) {
   const base = activeFilter === "all" ? events : events.filter(e => e.author === activeFilter);
   const expanded = [];
 
@@ -665,21 +652,32 @@ function filteredEvents(periodStart, periodEnd) {
           expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
         }
       } else if (ev.endDate && ev.endDate > ev.date) {
-        const origStart = new Date(ev.date + "T00:00:00");
-        const origEnd = new Date(ev.endDate + "T00:00:00");
-        const durationDays = Math.round((origEnd - origStart) / 86400000);
+        
+        if (isListView) {
+           // ⭐ 목록 뷰: 달력 화면처럼 분리하지 않고, 기간 내에 걸쳐있으면 딱 1번만 추가함
+           if (sDate <= periodEnd && ev.endDate >= periodStart) {
+             expanded.push({ ...ev, date: sDate, _isRange: true });
+           }
+        } else {
+           // ⭐ 달력 뷰: 날짜별 칸에 다 들어가야 하니 쪼개서 추가함
+           const origStart = new Date(ev.date + "T00:00:00");
+           const origEnd = new Date(ev.endDate + "T00:00:00");
+           const durationDays = Math.round((origEnd - origStart) / 86400000);
 
-        let cur = new Date(sDate + "T00:00:00");
-        const end = new Date(sDate + "T00:00:00");
-        end.setDate(end.getDate() + durationDays);
-        const formattedEnd = toLocalISO(end);
+           let cur = new Date(sDate + "T00:00:00");
+           const end = new Date(sDate + "T00:00:00");
+           end.setDate(end.getDate() + durationDays);
+           const formattedEnd = toLocalISO(end);
 
-        while (cur <= end) {
-          const dStr = toLocalISO(cur);
-          if (dStr >= periodStart && dStr <= periodEnd) {
-            expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
-          }
-          cur.setDate(cur.getDate() + 1);
+           while (cur <= end) {
+             const dStr = toLocalISO(cur);
+             const isHoliday = !!getHolidayName(dStr);
+             
+             if (dStr >= periodStart && dStr <= periodEnd && !isHoliday) {
+               expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
+             }
+             cur.setDate(cur.getDate() + 1);
+           }
         }
       } else {
         if (sDate >= periodStart && sDate <= periodEnd) {
@@ -721,8 +719,6 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
     else if (type === "yearly") match = start.slice(5) === dateStr.slice(5);
 
     const excluded = (ev.repeatExclude || []).includes(dateStr);
-    
-    // ⭐ 공휴일 제외 로직 정상 작동
     const isHoliday = !!getHolidayName(dateStr);
 
     if (match && !excluded && !isHoliday) results.push(dateStr);
@@ -745,7 +741,9 @@ function renderCells() {
   
   const monthStart = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-01`;
   const monthEnd = toLocalISO(new Date(currentYear, currentMonth+1, 0));
-  const evsToRender = filteredEvents(monthStart, monthEnd);
+  
+  // 달력용으로 렌더링 호출 (분할 됨)
+  const evsToRender = filteredEvents(monthStart, monthEnd, false);
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
@@ -793,9 +791,7 @@ function renderCells() {
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
       
-      const displayTitle = getDisplayTitle(ev);
-      
-      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${displayTitle}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
+      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
       cellTop.appendChild(chip);
     });
@@ -862,7 +858,8 @@ function renderList() {
       end = toLocalISO(new Date(currentYear, currentMonth+1, 0));
   }
 
-  const evsToRender = filteredEvents(start, end);
+  // ⭐ 목록용으로 렌더링 호출 (isListView = true -> 기간일정 합쳐서 1개로)
+  const evsToRender = filteredEvents(start, end, true);
   const sorted = evsToRender.sort((a,b) => `${a.date}${a.time || ""}` > `${b.date}${b.time || ""}` ? 1 : -1);
 
   const container = document.getElementById("listItems");
@@ -880,21 +877,42 @@ function renderList() {
     const past = evTime < now;
     const isComp = ev.isCompleted;
     
-    const monthStrDisp = parseInt(ev.date.slice(5,7), 10);
-    const dayStr = parseInt(ev.date.slice(8,10), 10);
-    const dateDisplay = listMode === "year" ? `${monthStrDisp}/${dayStr}` : dayStr;
-    const dateFontSize = listMode === "year" ? "18px" : "22px";
+    let dateBoxHtml = '';
     
-    const displayTitle = getDisplayTitle(ev);
+    // ⭐ 기간 설정된 일정이면 왼쪽에 범위로 표시
+    if (ev._isRange) {
+        const sm = parseInt(ev.date.slice(5,7), 10);
+        const sd = parseInt(ev.date.slice(8,10), 10);
+        const em = parseInt(ev.endDate.slice(5,7), 10);
+        const ed = parseInt(ev.endDate.slice(8,10), 10);
+        
+        dateBoxHtml = `
+          <div style="font-size:10px;color:#94A3B8;font-weight:700;margin-bottom:1px;">기간</div>
+          <div style="font-size:14px;font-weight:900;color:var(--navy);line-height:1.2;">
+            ${sm}/${sd}<br><span style="font-size:12px;color:#64748B;">~${em}/${ed}</span>
+          </div>
+        `;
+    } else {
+        const monthStrDisp = parseInt(ev.date.slice(5,7), 10);
+        const dayStr = parseInt(ev.date.slice(8,10), 10);
+        const dateDisplay = listMode === "year" ? `${monthStrDisp}/${dayStr}` : dayStr;
+        const dateFontSize = listMode === "year" ? "18px" : "22px";
+        const dayOfWeek = ["일","월","화","수","목","금","토"][evTime.getDay()];
+        const dayColor = evTime.getDay() === 0 ? "#EF4444" : evTime.getDay() === 6 ? "#3B82F6" : "#1E293B";
+
+        dateBoxHtml = `
+          <div style="font-size:11px;color:#94A3B8;font-weight:700">${dayOfWeek}</div>
+          <div style="font-size:${dateFontSize};font-weight:900;color:${dayColor};line-height:1.1">${dateDisplay}</div>
+        `;
+    }
     
     return `
       <div class="list-item" style="border-left:4px solid ${isComp ? '#94A3B8' : c.bg};opacity:${past||isComp?0.55:1}">
-        <div style="text-align:center;min-width:38px">
-          <div style="font-size:11px;color:#94A3B8;font-weight:700">${["일","월","화","수","목","금","토"][evTime.getDay()]}</div>
-          <div style="font-size:${dateFontSize};font-weight:900;color:${evTime.getDay()===0?"#EF4444":evTime.getDay()===6?"#3B82F6":"#1E293B"};line-height:1.1">${dateDisplay}</div>
+        <div style="text-align:center;min-width:48px;">
+          ${dateBoxHtml}
         </div>
         <div class="list-info">
-          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${displayTitle}</div>
+          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div class="list-meta">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:flex;align-items:center;gap:4px">
@@ -914,7 +932,7 @@ window.toggleListMode = function() {
     renderAll();
 };
 
-// ⭐ 날짜 선택 시 종료 날짜를 자동으로 맞춰주는 이벤트 리스너 (에러방지)
+// ⭐ 날짜 선택 시 종료 날짜를 자동으로 맞춰주는 이벤트 리스너
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("fDate").addEventListener("change", function() {
     const endEl = document.getElementById("fEndDate");
@@ -1006,12 +1024,11 @@ window.openDayModal = function(dateStr, dayEvs) {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     const uc = userColor(ev.author || "?");
     const isComp = ev.isCompleted;
-    const displayTitle = getDisplayTitle(ev);
     
     return `
       <div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${isComp ? '#94A3B8' : c.bg};display:flex;align-items:center;gap:10px; opacity:${isComp ? 0.7 : 1}">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${displayTitle}</div>
+          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${uc}"></span>

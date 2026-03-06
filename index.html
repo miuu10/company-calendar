@@ -631,7 +631,6 @@ function filteredEvents() {
 
   base.forEach(ev => {
     if (!ev.repeatMaster) { expanded.push(ev); return; }
-    // 반복 마스터 → 이 달에 해당하는 날짜들 생성
     const dates = expandRepeatForMonth(ev, monthStart, monthEnd);
     dates.forEach(d => expanded.push({ ...ev, date: d, _virtual: true }));
   });
@@ -734,19 +733,31 @@ function renderCells() {
     
     cell.appendChild(cellTop);
 
-    // ---- 하단 요소 (해외 공휴일 배지 무조건 바닥 고정) ----
+    // ---- 하단 요소 (해외 공휴일 배지 무조건 바닥 고정 & 같은 이름 병합) ----
     const foreignHols = getForeignHolidays(dateStr);
     if (foreignHols.length > 0) {
       const cellBottom = document.createElement("div");
       cellBottom.className = "cell-bottom";
       
+      // 같은 이름의 공휴일끼리 국가 코드를 묶어주는 작업
+      const groupedHols = {};
       foreignHols.forEach(fh => {
+        if (!groupedHols[fh.n]) groupedHols[fh.n] = [];
+        groupedHols[fh.n].push(fh.c);
+      });
+
+      // 묶인 정보(예: 노동절 -> ['cn', 'th', 'my'])를 화면에 출력
+      Object.entries(groupedHols).forEach(([hName, countries]) => {
         const fEl = document.createElement("div");
         fEl.style.cssText = "font-size:9px;color:#64748B;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;margin-top:1px;";
-        // 텍스트 대신 FlagCDN 이미지 사용!
-        fEl.innerHTML = `<img src="https://flagcdn.com/16x12/${fh.c}.png" alt="${fh.c}" style="width:12px;height:9px;margin-right:3px;flex-shrink:0;"><span>${fh.n}</span>`;
+        
+        // 겹치는 국가 수만큼 깃발 이미지를 연달아 생성
+        const flagsHTML = countries.map(c => `<img src="https://flagcdn.com/16x12/${c}.png" alt="${c}" style="width:12px;height:9px;margin-right:2px;flex-shrink:0; border-radius:1px;">`).join("");
+        
+        fEl.innerHTML = `${flagsHTML}<span style="margin-left:1px;">${hName}</span>`;
         cellBottom.appendChild(fEl);
       });
+      
       cell.appendChild(cellBottom);
     }
 

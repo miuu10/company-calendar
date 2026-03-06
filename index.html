@@ -204,7 +204,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   </div>
 </main>
 
-
 <div class="overlay" id="dayOverlay" style="display:none" onclick="if(event.target===this)document.getElementById('dayOverlay').style.display='none'">
   <div class="modal" style="max-width:500px">
     <div class="modal-header">
@@ -400,6 +399,22 @@ function getDynamicHolidays(dateStr) {
   return { kr, isSub, foreign };
 }
 
+// ⭐ 주말 및 공휴일 판별 함수 (카테고리별 예외 처리 포함)
+function isWorkingDay(dateStr, category) {
+  // 1. 휴일/주말을 무시하고 무조건 달력에 표시해야 하는 카테고리들
+  const skipHolidaySkip = ["production", "arrival", "departure", "biz_trip"].includes(category);
+  if (skipHolidaySkip) return true;
+
+  // 2. 그 외 카테고리(송금, 휴가, GMP 등)는 주말(토,일)이거나 한국 공휴일이면 달력에서 숨김
+  const dow = new Date(dateStr + "T00:00:00").getDay();
+  const isWeekend = (dow === 0 || dow === 6); // 0=일요일, 6=토요일
+  const isHol = !!getDynamicHolidays(dateStr).kr;
+
+  if (isWeekend || isHol) return false;
+
+  return true;
+}
+
 const CATS = {
   remittance:     { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "송금" },
   departure:      { bg: "#DB2777", light: "#FDF2F8", text: "#BE185D", label: "출항" },
@@ -455,7 +470,7 @@ function initFirebase() {
   }
 }
 
-// ⭐ 1. 기존 DB 정리 묶어주기 버튼 (원클릭)
+// 기존 DB 정리 묶어주기 버튼 (원클릭)
 window.mergeExistingEvents = async function() {
   if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 깔끔하게 정리합니다.\n(중복 데이터도 모두 삭제됩니다.) 진행하시겠습니까?")) return;
 
@@ -523,7 +538,6 @@ window.mergeExistingEvents = async function() {
   }
 };
 
-// ⭐ 2. 엑셀 업로드 시 중복 방지 및 자동 병합
 window.handleExcelUpload = async function(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -620,14 +634,12 @@ window.handleExcelUpload = async function(event) {
             for (let m of mergedEvents) {
                 if (m.date === m.endDate) m.endDate = ""; 
                 
-                // ⭐ DB 내 완벽 중복/겹침 검사
                 let isOverlap = events.some(ev => {
                     if (ev.title !== m.title) return false; 
                     let evStart = ev.date;
                     let evEnd = ev.endDate || ev.date;
                     let mStart = m.date;
                     let mEnd = m.endDate || m.date;
-                    // 기간이 하루라도 겹치면 패스
                     return (mStart <= evEnd && mEnd >= evStart);
                 });
 
@@ -784,7 +796,7 @@ function getDisplayTitle(ev) {
     return displayTitle;
 }
 
-// ⭐ 특정 카테고리는 공휴일 제외 로직에서 빠지도록 수정 완료!
+// ⭐ 기간 일정 렌더링 (주말/공휴일 예외처리 완벽 적용)
 function filteredEvents(periodStart, periodEnd, isListView = false) {
   const base = activeFilter === "all" ? events : events.filter(e => e.author === activeFilter);
   const expanded = [];
@@ -809,18 +821,18 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
 
            while (cur <= end) {
              const dStr = toLocalISO(cur);
-             const isHol = !!getDynamicHolidays(dStr).kr;
-             // ⭐ 생산완료, 입항, 출항, 출장 카테고리는 공휴일이어도 달력에 그려지도록 허용!
-             const skipHolidaySkip = ["production", "arrival", "departure", "biz_trip"].includes(ev.category);
-             
-             if (dStr >= periodStart && dStr <= periodEnd && (!isHol || skipHolidaySkip)) {
+             // ⭐ 평일이거나 특정 업무일 때만 달력에 표시
+             if (dStr >= periodStart && dStr <= periodEnd && isWorkingDay(dStr, ev.category)) {
                expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
              }
              cur.setDate(cur.getDate() + 1);
            }
         }
       } else {
-        if (sDate >= periodStart && sDate <= periodEnd) expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
+        // ⭐ 단일 일정도 주말/공휴일 필터 통과해야 달력에 표시 (특정 카테고리 제외)
+        if (sDate >= periodStart && sDate <= periodEnd && isWorkingDay(sDate, ev.category)) {
+            expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
+        }
       }
     });
   });
@@ -850,11 +862,15 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
     else if (type === "yearly") match = start.slice(5) === dateStr.slice(5);
 
     const excluded = (ev.repeatExclude || []).includes(dateStr);
-    const isHol = !!getDynamicHolidays(dateStr).kr;
-    // ⭐ 반복 일정에서도 위 4개 카테고리는 공휴일을 건너뛰지 않음!
-    const skipHolidaySkip = ["production", "arrival", "departure", "biz_trip"].includes(ev.category);
 
-    if (match && !excluded && (!isHol || skipHolidaySkip)) results.push(dateStr);
+    if (match && !excluded) {
+        if (durationDays > 0) {
+            results.push(dateStr);
+        } else {
+            // ⭐ 단일 반복 일정 필터
+            if (isWorkingDay(dateStr, ev.category)) results.push(dateStr);
+        }
+    }
     cur.setDate(cur.getDate()+1);
   }
   return results;

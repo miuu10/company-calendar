@@ -11,12 +11,16 @@
 :root { --navy: #0F172A; --navy2: #1E293B; --navy3: #334155; --slate: #64748B; --muted: #94A3B8; --border: #E2E8F0; --bg: #F1F5F9; --white: #FFFFFF; --blue: #3B82F6; --red: #EF4444; --green: #10B981; --yellow: #F59E0B; --purple: #8B5CF6; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--navy); min-height: 100vh; }
+
+/* ── 토스트 ── */
 #toasts { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .toast { background: var(--navy2); color: #fff; padding: 12px 18px; border-radius: 12px; font-size: 14px; font-weight: 500; box-shadow: 0 4px 24px rgba(0,0,0,.25); max-width: 340px; animation: slideIn .3s ease; }
 .toast.alarm { border-left: 4px solid var(--yellow); background: #1C1917; }
 .toast.success { background: #064E3B; }
 .toast.error { background: #7F1D1D; }
 @keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── 헤더 ── */
 header { background: var(--navy); color: #fff; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 16px rgba(0,0,0,.2); position: sticky; top: 0; z-index: 100; }
 .header-brand { display: flex; align-items: center; gap: 12px; }
 .header-brand .icon { font-size: 24px; }
@@ -25,6 +29,8 @@ header { background: var(--navy); color: #fff; padding: 0 32px; height: 64px; di
 .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .user-chip { background: var(--navy3); color: #fff; border-radius: 20px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid #475569; }
 .user-chip:hover { background: #475569; }
+
+/* ── 버튼 ── */
 .btn { border: none; border-radius: 10px; padding: 8px 16px; cursor: pointer; font-weight: 700; font-size: 13px; font-family: inherit; transition: all .15s; }
 .btn:hover { filter: brightness(1.1); }
 .btn-ghost { background: var(--white); border: 1.5px solid var(--border); color: var(--slate); }
@@ -32,6 +38,8 @@ header { background: var(--navy); color: #fff; padding: 0 32px; height: 64px; di
 .btn-danger-soft { background: #FEF2F2; color: var(--red); }
 .btn-arrow { background: var(--white); border: 1.5px solid var(--border); color: var(--slate); width: 38px; height: 38px; font-size: 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
 .btn-arrow:hover { background: var(--bg); }
+
+/* ── 메인 레이아웃 ── */
 main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .cal-nav h2 { font-size: 26px; font-weight: 900; letter-spacing: -1px; color: var(--navy); }
@@ -243,6 +251,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
           <option value="arrival">⚓ 입항</option>
           <option value="container">📦 컨테이너입고</option>
           <option value="gmp">🔬 GMP</option>
+          <option value="production">🏭 생산완료</option>
           <option value="biz_trip">💼 출장</option>
           <option value="vacation">🟡 휴가</option>
           <option value="other">⚪ 기타</option>
@@ -390,12 +399,14 @@ function getDynamicHolidays(dateStr) {
   return { kr, isSub, foreign };
 }
 
+// ⭐ 생산완료(노랑) 카테고리 추가 완료
 const CATS = {
   remittance:     { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "송금" },
   departure:      { bg: "#DB2777", light: "#FDF2F8", text: "#BE185D", label: "출항" },
   arrival:        { bg: "#0EA5E9", light: "#F0F9FF", text: "#0369A1", label: "입항" },
   container:      { bg: "#0D9488", light: "#F0FDFA", text: "#0F766E", label: "컨테이너입고" },
   gmp:            { bg: "#8B5CF6", light: "#F5F3FF", text: "#6D28D9", label: "GMP" },
+  production:     { bg: "#EAB308", light: "#FEF9C3", text: "#A16207", label: "생산완료" },
   biz_trip:       { bg: "#F97316", light: "#FFF7ED", text: "#C2410C", label: "출장" },
   vacation:       { bg: "#F59E0B", light: "#FFFBEB", text: "#B45309", label: "휴가" },
   other:          { bg: "#64748B", light: "#F1F5F9", text: "#475569", label: "기타" }, 
@@ -444,7 +455,6 @@ function initFirebase() {
   }
 }
 
-// ⭐ 엑셀 업로드 처리 함수 (똑똑한 제목-메모 자동 분리 로직 탑재!)
 window.handleExcelUpload = async function(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -458,25 +468,20 @@ window.handleExcelUpload = async function(event) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {type: 'array'});
 
-            // '일정관리' 시트 확인, 없으면 1번째 시트 열기
             const sheetName = workbook.SheetNames.includes("일정관리") ? "일정관리" : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
 
-            // 날짜를 정확히 빼오기 위해 raw 모드 활성화 (엑셀의 날짜 고유 번호를 숫자로 가져옴)
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: "A", raw: true, defval: ""});
 
             let newCount = 0;
             let skipCount = 0;
 
-            // 엑셀 날짜 형식을 표준 날짜로 바꿔주는 함수
             function parseExcelDate(val) {
                 if (!val) return null;
-                // 엑셀 고유 숫자(Serial Date)일 경우
                 if (typeof val === 'number') {
                     const date = new Date(Math.round((val - 25569) * 86400 * 1000));
                     return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
                 }
-                // 문자열(ex: 2026-03-05)일 경우
                 let dStr = String(val).trim().replace(/[\.\/]/g, '-').replace(/\s/g, '');
                 if (dStr.endsWith('-')) dStr = dStr.slice(0, -1);
                 const match = dStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -484,7 +489,6 @@ window.handleExcelUpload = async function(event) {
                 return null;
             }
 
-            // 개별 행 처리 함수
             async function processExcelRow(dateVal, titleVal) {
                 const cleanDate = parseExcelDate(dateVal);
                 const originalTitle = String(titleVal).trim();
@@ -494,25 +498,23 @@ window.handleExcelUpload = async function(event) {
                 let cleanTitle = originalTitle;
                 let memoText = "";
 
-                // ⭐ 텍스트 분리 인공지능 로직 ("지급일 $금액" 패턴을 귀신같이 찾아냄)
                 const priceMatch = originalTitle.match(/(.*?)(?:\s*지급일)?\s*(\$[0-9,.]+)/);
                 if (priceMatch) {
-                    cleanTitle = priceMatch[1].trim();   // "ST251002 잔금" 만 쏙 빼옴
-                    memoText = priceMatch[2].trim();     // "$23664" 만 쏙 빼옴
+                    cleanTitle = priceMatch[1].trim(); 
+                    memoText = priceMatch[2].trim();   
                 }
 
-                // 중복 체크 로직
                 const exists = events.find(ev => ev.date === cleanDate && ev.title === cleanTitle);
                 if (exists) {
                     skipCount++;
                     return;
                 }
 
-                // 카테고리 자동 판별
                 let category = "other";
                 if (originalTitle.includes("출항") || originalTitle.toUpperCase().includes("ETD")) category = "departure";
                 else if (originalTitle.includes("입항") || originalTitle.toUpperCase().includes("ETA")) category = "arrival";
                 else if (originalTitle.includes("입고")) category = "container";
+                else if (originalTitle.includes("생산완료")) category = "production";
                 else if (originalTitle.includes("잔금") || originalTitle.includes("선수금") || originalTitle.includes("지급") || originalTitle.includes("송금") || originalTitle.includes("$")) category = "remittance";
 
                 const newEvent = {
@@ -521,7 +523,7 @@ window.handleExcelUpload = async function(event) {
                     endDate: null,
                     time: "",
                     category: category,
-                    description: memoText, // 분리된 금액이 여기에 들어감!
+                    description: memoText, 
                     alarm: false,
                     alarmMinutes: 10,
                     author: currentUser,
@@ -534,17 +536,15 @@ window.handleExcelUpload = async function(event) {
                 newCount++;
             }
 
-            // 첫 번째 줄(제목) 건너뛰고 2번째 줄부터 분석 시작
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
-                await processExcelRow(row["J"], row["L"]); // 일정 / 일정명
-                await processExcelRow(row["W"], row["X"]); // 메모일 / 메모
+                await processExcelRow(row["J"], row["L"]); 
+                await processExcelRow(row["W"], row["X"]); 
             }
 
             document.getElementById("loadingScreen").style.display = "none";
             addToast(`✅ 엑셀 업로드 완료! (추가: ${newCount}개 / 중복제외: ${skipCount}개)`, "success");
 
-            // 업로드 버튼 초기화 (같은 파일 다시 올릴 수 있게)
             document.getElementById('excelUpload').value = '';
 
         } catch (error) {
@@ -918,6 +918,7 @@ window.openAddModal = function(dateStr) {
   setTimeout(() => document.getElementById("fTitle").focus(), 100);
 };
 
+// ⭐ 삭제 버튼 복구 완료!
 window.openEditModal = function(ev) {
   editingId = ev.id; currentEditDate = ev.date;
   document.getElementById("modalTitle").textContent = "✏️ 일정 수정";
@@ -929,7 +930,13 @@ window.openEditModal = function(ev) {
   document.getElementById("fRepeat").checked = !!ev.repeatType; document.getElementById("fRepeatType").value = ev.repeatType || "weekly"; document.getElementById("fRepeatEnd").value = ev.repeatEnd || ""; document.getElementById("repeatRow").style.display = ev.repeatType ? "flex" : "none"; document.getElementById("weekdayRow").style.display = ev.repeatType === "weekday" ? "flex" : "none";
   document.querySelectorAll(".dow-check").forEach(c => c.checked = ev.repeatType === "weekday" && (ev.repeatDays || []).includes(Number(c.value)));
   document.getElementById("fAlarm").checked = ev.alarm; document.getElementById("alarmTimingRow").style.display = ev.alarm ? "flex" : "none";
-  document.getElementById("modalActionTop").style.display = "flex"; document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none"; document.getElementById("completeBtn").style.display = !ev.isCompleted ? "block" : "none";
+  
+  // 버튼들 보이기 세팅
+  document.getElementById("modalActionTop").style.display = "flex"; 
+  document.getElementById("deleteBtn").style.display = "block"; // 👈 삭제 버튼 다시 켰습니다!
+  document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none"; 
+  document.getElementById("completeBtn").style.display = !ev.isCompleted ? "block" : "none";
+  
   document.getElementById("overlay").style.display = "flex";
 };
 

@@ -67,7 +67,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .day-header.sun { color: var(--red); }
 .day-header.sat { color: var(--blue); }
 .cells { display: grid; grid-template-columns: repeat(7,1fr); }
-.cell { min-height: 96px; padding: 7px 5px; border-top: 1px solid #F1F5F9; cursor: pointer; transition: background .1s; position: relative; }
+.cell { 
+  min-height: 96px; padding: 7px 5px; border-top: 1px solid #F1F5F9; cursor: pointer; transition: background .1s; position: relative; 
+  /* 내부 요소 위아래 배치(맨 아래 고정)를 위한 속성 추가 */
+  display: flex; flex-direction: column; 
+}
 .cell:hover .cell-inner { opacity: 1; }
 .cell:hover { background: #F8FAFC; }
 .cell.today { background: #EFF6FF; }
@@ -133,7 +137,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .modal-actions { display: flex; gap: 8px; margin-top: 24px; }
 .modal-actions .btn { flex: 1; padding: 13px 0; font-size: 14px; }
 
-/* ── 반응형 모바일 최적화 ── */
+/* ── 반응형 모바일 최적화 수정 코드 ── */
 @media (max-width: 768px) {
   header { padding: 0 14px; height: 56px; }
   .header-brand h1 { font-size: 15px; }
@@ -142,13 +146,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   .cal-nav h2 { font-size: 20px; }
   .cell { min-height: 65px; padding: 4px 3px; }
   .event-chip { 
-    font-size: 10px; 
-    padding: 2px 4px; 
-    white-space: nowrap; 
-    overflow: hidden; 
-    text-overflow: ellipsis; 
-    max-width: 100%;
-    line-height: 1.2;
+    font-size: 10px; padding: 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.2;
   }
   .chip-author { display: none; }
   .modal { padding: 22px 18px; width: 95%; }
@@ -375,120 +373,86 @@ const firebaseConfig = {
 
 // ── 한국 공휴일 ─────────────────────────────
 const KR_HOLIDAYS = {
-  "01-01": "신정",
-  "03-01": "삼일절",
-  "05-05": "어린이날",
-  "06-06": "현충일",
-  "08-15": "광복절",
-  "10-03": "개천절",
-  "10-09": "한글날",
-  "12-25": "크리스마스",
+  "01-01": "신정", "03-01": "삼일절", "05-05": "어린이날", "06-06": "현충일",
+  "08-15": "광복절", "10-03": "개천절", "10-09": "한글날", "12-25": "크리스마스",
 };
 
 // 음력 공휴일 (양력 변환, 2024~2027)
 const LUNAR_HOLIDAYS = {
-  // 설날 연휴
   "2024-02-09":"설날 연휴","2024-02-10":"설날","2024-02-11":"설날 연휴",
   "2025-01-28":"설날 연휴","2025-01-29":"설날","2025-01-30":"설날 연휴",
   "2026-02-16":"설날 연휴","2026-02-17":"설날","2026-02-18":"설날 연휴",
   "2027-02-06":"설날 연휴","2027-02-07":"설날","2027-02-08":"설날 연휴",
-  // 추석 연휴
   "2024-09-16":"추석 연휴","2024-09-17":"추석","2024-09-18":"추석 연휴",
   "2025-10-05":"추석 연휴","2025-10-06":"추석","2025-10-07":"추석 연휴",
   "2026-09-24":"추석 연휴","2026-09-25":"추석","2026-09-26":"추석 연휴",
   "2027-09-14":"추석 연휴","2027-09-15":"추석","2027-09-16":"추석 연휴",
-  // 부처님오신날
-  "2024-05-15":"부처님오신날",
-  "2025-05-05":"부처님오신날",
-  "2026-05-24":"부처님오신날",
-  "2027-05-13":"부처님오신날",
+  "2024-05-15":"부처님오신날","2025-05-05":"부처님오신날","2026-05-24":"부처님오신날","2027-05-13":"부처님오신날",
 };
 
 // 대체공휴일 (공휴일이 일요일·토요일 또는 다른 공휴일과 겹칠 때)
 const SUBSTITUTE_HOLIDAYS = {
-  // 2024
-  "2024-02-12": "설날 대체공휴일",   
-  "2024-05-06": "어린이날 대체공휴일", 
-  "2024-09-18": "추석 대체공휴일",    
-
-  // 2025
-  "2025-03-03": "삼일절 대체공휴일",  
-  "2025-05-06": "부처님오신날 대체공휴일", 
-  "2025-10-08": "추석 대체공휴일",    
-
-  // 2026
-  "2026-03-02": "삼일절 대체공휴일",  
-  "2026-05-25": "부처님오신날 대체공휴일", 
-  "2026-09-28": "추석 대체공휴일",    
-
-  // 2027
-  "2027-02-09": "설날 대체공휴일",    
-  "2027-08-16": "광복절 대체공휴일",  
+  "2024-02-12": "설날 대체공휴일", "2024-05-06": "어린이날 대체공휴일", "2024-09-18": "추석 대체공휴일",    
+  "2025-03-03": "삼일절 대체공휴일", "2025-05-06": "부처님오신날 대체공휴일", "2025-10-08": "추석 대체공휴일",    
+  "2026-03-02": "삼일절 대체공휴일", "2026-05-25": "부처님오신날 대체공휴일", "2026-09-28": "추석 대체공휴일",    
+  "2027-02-09": "설날 대체공휴일", "2027-08-16": "광복절 대체공휴일",  
 };
 
-// ── 해외 공휴일 ──────────────────────────────
-const FOREIGN_HOLIDAYS = {
-  // 🇨🇳 중국
-  "2024-01-01":"🇨🇳신년","2024-02-10":"🇨🇳춘절","2024-02-11":"🇨🇳춘절","2024-02-12":"🇨🇳춘절",
-  "2024-04-04":"🇨🇳청명절","2024-05-01":"🇨🇳노동절","2024-05-02":"🇨🇳노동절","2024-05-03":"🇨🇳노동절",
-  "2024-06-10":"🇨🇳단오절","2024-09-17":"🇨🇳중추절","2024-10-01":"🇨🇳국경절","2024-10-02":"🇨🇳국경절",
-  "2024-10-03":"🇨🇳국경절","2024-10-04":"🇨🇳국경절","2024-10-07":"🇨🇳국경절",
-  "2025-01-01":"🇨🇳신년","2025-01-29":"🇨🇳춘절","2025-01-30":"🇨🇳춘절","2025-01-31":"🇨🇳춘절",
-  "2025-02-01":"🇨🇳춘절","2025-02-02":"🇨🇳춘절","2025-04-04":"🇨🇳청명절",
-  "2025-05-01":"🇨🇳노동절","2025-05-02":"🇨🇳노동절","2025-06-02":"🇨🇳단오절",
-  "2025-10-01":"🇨🇳국경절","2025-10-02":"🇨🇳국경절","2025-10-03":"🇨🇳국경절",
-  "2025-10-06":"🇨🇳중추절","2025-10-07":"🇨🇳국경절",
-  "2026-01-01":"🇨🇳신년","2026-02-17":"🇨🇳춘절","2026-02-18":"🇨🇳춘절","2026-02-19":"🇨🇳춘절",
-  "2026-02-20":"🇨🇳춘절","2026-02-21":"🇨🇳춘절","2026-04-05":"🇨🇳청명절",
-  "2026-05-01":"🇨🇳노동절","2026-05-02":"🇨🇳노동절","2026-05-03":"🇨🇳노동절",
-  "2026-06-19":"🇨🇳단오절","2026-09-25":"🇨🇳중추절",
-  "2026-10-01":"🇨🇳국경절","2026-10-02":"🇨🇳국경절","2026-10-05":"🇨🇳국경절","2026-10-06":"🇨🇳국경절","2026-10-07":"🇨🇳국경절",
-  "2027-01-01":"🇨🇳신년","2027-02-06":"🇨🇳춘절","2027-02-07":"🇨🇳춘절","2027-02-08":"🇨🇳춘절",
-  "2027-02-09":"🇨🇳춘절","2027-02-10":"🇨🇳춘절","2027-04-05":"🇨🇳청명절",
-  "2027-05-01":"🇨🇳노동절","2027-05-02":"🇨🇳노동절","2027-05-03":"🇨🇳노동절",
-  "2027-09-15":"🇨🇳중추절","2027-10-01":"🇨🇳국경절","2027-10-04":"🇨🇳국경절","2027-10-05":"🇨🇳국경절","2027-10-06":"🇨🇳국경절","2027-10-07":"🇨🇳국경절",
+// ── 해외 공휴일 (국가코드, 이름, 날짜 배열) ──────────────────────────────
+const RAW_FOREIGN_HOLIDAYS = [
+  // 🇨🇳 중국 (국가코드: cn)
+  ["cn", "신년", "2024-01-01","2025-01-01","2026-01-01","2027-01-01"],
+  ["cn", "춘절", "2024-02-10","2024-02-11","2024-02-12","2025-01-29","2025-01-30","2025-01-31","2025-02-01","2025-02-02","2026-02-17","2026-02-18","2026-02-19","2026-02-20","2026-02-21","2027-02-06","2027-02-07","2027-02-08","2027-02-09","2027-02-10"],
+  ["cn", "청명절", "2024-04-04","2025-04-04","2026-04-05","2027-04-05"],
+  ["cn", "노동절", "2024-05-01","2024-05-02","2024-05-03","2025-05-01","2025-05-02","2026-05-01","2026-05-02","2026-05-03","2027-05-01","2027-05-02","2027-05-03"],
+  ["cn", "단오절", "2024-06-10","2025-06-02","2026-06-19"],
+  ["cn", "중추절", "2024-09-17","2025-10-06","2026-09-25","2027-09-15"],
+  ["cn", "국경절", "2024-10-01","2024-10-02","2024-10-03","2024-10-04","2024-10-07","2025-10-01","2025-10-02","2025-10-03","2025-10-07","2026-10-01","2026-10-02","2026-10-05","2026-10-06","2026-10-07","2027-10-01","2027-10-04","2027-10-05","2027-10-06","2027-10-07"],
+  
+  // 🇹🇭 태국 (국가코드: th)
+  ["th", "신년", "2024-01-01","2025-01-01","2026-01-01"],
+  ["th", "마카부차", "2024-02-24"],
+  ["th", "짝끄리기념일", "2024-04-06","2025-04-06","2026-04-06"],
+  ["th", "송끄란", "2024-04-13","2024-04-14","2024-04-15","2025-04-13","2025-04-14","2025-04-15","2026-04-13","2026-04-14","2026-04-15"],
+  ["th", "노동절", "2024-05-01","2025-05-01","2026-05-01"],
+  ["th", "대관식기념일", "2024-05-04"],
+  ["th", "위사카부차", "2024-05-22"],
+  ["th", "왕비생일", "2024-06-03"],
+  ["th", "아사나하부차", "2024-07-20"],
+  ["th", "카오판사", "2024-07-22"],
+  ["th", "국왕생일", "2024-07-28","2025-07-28","2026-07-28"],
+  ["th", "어머니날", "2024-08-12","2025-08-12","2026-08-12"],
+  ["th", "라마9세추모일", "2024-10-13","2025-10-13","2026-10-13"],
+  ["th", "쭐라롱꼰기념일", "2024-10-23","2025-10-23","2026-10-23"],
+  ["th", "아버지날", "2024-12-05","2025-12-05","2026-12-05"],
+  ["th", "헌법기념일", "2024-12-10","2025-12-10","2026-12-10"],
+  ["th", "송구", "2024-12-31","2025-12-31","2026-12-31"],
 
-  // 🇹🇭 태국
-  "2024-01-01":"🇹🇭신년","2024-02-24":"🇹🇭마카부차","2024-04-06":"🇹🇭짝끄리기념일",
-  "2024-04-13":"🇹🇭송끄란","2024-04-14":"🇹🇭송끄란","2024-04-15":"🇹🇭송끄란",
-  "2024-05-01":"🇹🇭노동절","2024-05-04":"🇹🇭대관식기념일","2024-05-22":"🇹🇭위사카부차",
-  "2024-06-03":"🇹🇭왕비생일","2024-07-20":"🇹🇭아사나하부차","2024-07-22":"🇹🇭카오판사",
-  "2024-07-28":"🇹🇭국왕생일","2024-08-12":"🇹🇭어머니날","2024-10-13":"🇹🇭라마9세추모일",
-  "2024-10-23":"🇹🇭쭐라롱꼰기념일","2024-12-05":"🇹🇭아버지날","2024-12-10":"🇹🇭헌법기념일","2024-12-31":"🇹🇭송구",
-  "2025-01-01":"🇹🇭신년","2025-04-06":"🇹🇭짝끄리기념일",
-  "2025-04-13":"🇹🇭송끄란","2025-04-14":"🇹🇭송끄란","2025-04-15":"🇹🇭송끄란",
-  "2025-05-01":"🇹🇭노동절","2025-07-28":"🇹🇭국왕생일","2025-08-12":"🇹🇭어머니날",
-  "2025-10-13":"🇹🇭라마9세추모일","2025-10-23":"🇹🇭쭐라롱꼰기념일",
-  "2025-12-05":"🇹🇭아버지날","2025-12-10":"🇹🇭헌법기념일","2025-12-31":"🇹🇭송구",
-  "2026-01-01":"🇹🇭신년","2026-04-06":"🇹🇭짝끄리기념일",
-  "2026-04-13":"🇹🇭송끄란","2026-04-14":"🇹🇭송끄란","2026-04-15":"🇹🇭송끄란",
-  "2026-05-01":"🇹🇭노동절","2026-07-28":"🇹🇭국왕생일","2026-08-12":"🇹🇭어머니날",
-  "2026-10-13":"🇹🇭라마9세추모일","2026-10-23":"🇹🇭쭐라롱꼰기념일",
-  "2026-12-05":"🇹🇭아버지날","2026-12-10":"🇹🇭헌법기념일","2026-12-31":"🇹🇭송구",
+  // 🇲🇾 말레이시아 (국가코드: my)
+  ["my", "신년", "2024-01-01","2025-01-01","2026-01-01","2027-01-01"],
+  ["my", "구정", "2024-02-10","2024-02-11","2024-02-12","2025-01-29","2025-01-30","2026-02-17","2026-02-18","2027-02-06","2027-02-07"],
+  ["my", "이드알피트르", "2024-04-10","2024-04-11","2025-03-31","2025-04-01","2026-03-20","2026-03-21","2027-03-10","2027-03-11"],
+  ["my", "노동절", "2024-05-01","2025-05-01","2026-05-01","2027-05-01"],
+  ["my", "웨삭데이", "2024-05-22","2025-05-12","2026-05-31"],
+  ["my", "이드알아드하", "2024-06-17","2025-06-07"],
+  ["my", "독립기념일", "2024-08-31","2025-08-31","2026-08-31","2027-08-31"],
+  ["my", "말레이시아데이", "2024-09-16","2025-09-16","2026-09-16","2027-09-16"],
+  ["my", "크리스마스", "2024-12-25","2025-12-25","2026-12-25","2027-12-25"]
+];
 
-  // 🇲🇾 말레이시아
-  "2024-01-01":"🇲🇾신년","2024-02-10":"🇲🇾구정","2024-02-11":"🇲🇾구정","2024-02-12":"🇲🇾구정",
-  "2024-04-10":"🇲🇾이드알피트르","2024-04-11":"🇲🇾이드알피트르",
-  "2024-05-01":"🇲🇾노동절","2024-05-22":"🇲🇾웨삭데이","2024-06-17":"🇲🇾이드알아드하",
-  "2024-08-31":"🇲🇾독립기념일","2024-09-16":"🇲🇾말레이시아데이","2024-12-25":"🇲🇾크리스마스",
-  "2025-01-01":"🇲🇾신년","2025-01-29":"🇲🇾구정","2025-01-30":"🇲🇾구정",
-  "2025-03-31":"🇲🇾이드알피트르","2025-04-01":"🇲🇾이드알피트르",
-  "2025-05-01":"🇲🇾노동절","2025-05-12":"🇲🇾웨삭데이","2025-06-07":"🇲🇾이드알아드하",
-  "2025-08-31":"🇲🇾독립기념일","2025-09-16":"🇲🇾말레이시아데이","2025-12-25":"🇲🇾크리스마스",
-  "2026-01-01":"🇲🇾신년","2026-02-17":"🇲🇾구정","2026-02-18":"🇲🇾구정",
-  "2026-03-20":"🇲🇾이드알피트르","2026-03-21":"🇲🇾이드알피트르",
-  "2026-05-01":"🇲🇾노동절","2026-05-31":"🇲🇾웨삭데이",
-  "2026-08-31":"🇲🇾독립기념일","2026-09-16":"🇲🇾말레이시아데이","2026-12-25":"🇲🇾크리스마스",
-  "2027-01-01":"🇲🇾신년","2027-02-06":"🇲🇾구정","2027-02-07":"🇲🇾구정",
-  "2027-03-10":"🇲🇾이드알피트르","2027-03-11":"🇲🇾이드알피트르",
-  "2027-05-01":"🇲🇾노동절","2027-08-31":"🇲🇾독립기념일",
-  "2027-09-16":"🇲🇾말레이시아데이","2027-12-25":"🇲🇾크리스마스",
-};
+const FOREIGN_HOLIDAYS = {};
+RAW_FOREIGN_HOLIDAYS.forEach(row => {
+  const countryCode = row[0];
+  const holidayName = row[1];
+  for (let i = 2; i < row.length; i++) {
+    const d = row[i];
+    if (!FOREIGN_HOLIDAYS[d]) FOREIGN_HOLIDAYS[d] = [];
+    FOREIGN_HOLIDAYS[d].push({ c: countryCode, n: holidayName });
+  }
+});
 
 function getForeignHolidays(dateStr) {
-  const results = [];
-  if (FOREIGN_HOLIDAYS[dateStr]) results.push(FOREIGN_HOLIDAYS[dateStr]);
-  return results;
+  return FOREIGN_HOLIDAYS[dateStr] || [];
 }
 
 function getHolidayName(dateStr) {
@@ -681,7 +645,6 @@ function expandRepeatForMonth(ev, monthStart, monthEnd) {
   const end = ev.repeatEnd || "2099-12-31";
   const results = [];
 
-  // 이달의 각 날짜를 순회
   let cur = new Date(monthStart);
   const mEnd = new Date(monthEnd);
 
@@ -693,7 +656,6 @@ function expandRepeatForMonth(ev, monthStart, monthEnd) {
     let match = false;
     if (type === "daily") match = true;
     else if (type === "weekly") {
-      // 시작일과 같은 요일
       match = new Date(start).getDay() === dow;
     } else if (type === "weekday") match = days.includes(dow);
     else if (type === "monthly") match = new Date(start).getDate() === cur.getDate();
@@ -732,19 +694,24 @@ function renderCells() {
     const isSub = holiday && isSubstituteHoliday(dateStr);
     if (holiday) cell.style.background = isToday ? "#FEF3C7" : (isSub ? "#FFF7ED" : "#FFFBEB");
 
+    // ---- 상단 요소 (날짜, 한국공휴일, 일정) ----
+    const cellTop = document.createElement("div");
+    cellTop.style.flex = "1";
+    cellTop.style.minWidth = "0";
+
     const numEl = document.createElement("div");
     const isRed = dow===0 || (holiday && !isSub);
     const isOrange = isSub;
     numEl.className = "day-num" + (isToday ? " is-today" : "") + (isRed && !isToday ? " is-sun" : (!isRed && dow===6 && !isToday && !isOrange ? " is-sat" : ""));
     if (isOrange && !isToday) numEl.style.color = "#EA580C";
     numEl.textContent = d;
-    cell.appendChild(numEl);
+    cellTop.appendChild(numEl);
 
     if (holiday) {
       const hEl = document.createElement("div");
       hEl.style.cssText = `font-size:10px;color:${isSub?"#EA580C":"#B45309"};font-weight:700;padding:0 2px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
       hEl.textContent = (isSub ? "🔄 " : "") + holiday;
-      cell.appendChild(hEl);
+      cellTop.appendChild(hEl);
     }
 
     dayEvs.slice(0, 3).forEach(ev => {
@@ -754,7 +721,7 @@ function renderCells() {
       chip.title = `${ev.title} (${ev.author})`;
       chip.innerHTML = `${ev.alarm ? "🔔" : ""}${ev.repeatGroupId ? "🔁" : ""}<span style="flex:1;overflow:hidden;text-overflow:ellipsis">${ev.time} ${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
-      cell.appendChild(chip);
+      cellTop.appendChild(chip);
     });
     if (dayEvs.length > 3) {
       const more = document.createElement("div");
@@ -762,17 +729,26 @@ function renderCells() {
       more.style.cssText = "cursor:pointer;color:#3B82F6;font-weight:700;font-size:11px;padding:1px 3px;";
       more.textContent = `+${dayEvs.length - 3}개 더 보기`;
       more.onclick = e => { e.stopPropagation(); openDayModal(dateStr, dayEvs); };
-      cell.appendChild(more);
+      cellTop.appendChild(more);
     }
+    
+    cell.appendChild(cellTop);
 
-    // 해외 공휴일
+    // ---- 하단 요소 (해외 공휴일 배지 무조건 바닥 고정) ----
     const foreignHols = getForeignHolidays(dateStr);
-    foreignHols.forEach(fh => {
-      const fEl = document.createElement("div");
-      fEl.style.cssText = "font-size:9px;color:#64748B;padding:0 2px 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-      fEl.textContent = fh;
-      cell.appendChild(fEl);
-    });
+    if (foreignHols.length > 0) {
+      const cellBottom = document.createElement("div");
+      cellBottom.className = "cell-bottom";
+      
+      foreignHols.forEach(fh => {
+        const fEl = document.createElement("div");
+        fEl.style.cssText = "font-size:9px;color:#64748B;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;margin-top:1px;";
+        // 텍스트 대신 FlagCDN 이미지 사용!
+        fEl.innerHTML = `<img src="https://flagcdn.com/16x12/${fh.c}.png" alt="${fh.c}" style="width:12px;height:9px;margin-right:3px;flex-shrink:0;"><span>${fh.n}</span>`;
+        cellBottom.appendChild(fEl);
+      });
+      cell.appendChild(cellBottom);
+    }
 
     container.appendChild(cell);
   }
@@ -877,7 +853,6 @@ window.openEditModal = function(ev) {
   document.getElementById("overlay").style.display = "flex";
 };
 
-
 window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalTitle").textContent = `📅 ${dateStr.replace(/-/g,".")} 일정 (${dayEvs.length}개)`;
   const list = document.getElementById("dayModalList");
@@ -906,7 +881,6 @@ window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayOverlay").style.display = "flex";
 };
 
-// 카테고리 변경시 제목 placeholder 변경
 document.getElementById("fCategory").addEventListener("change", function() {
   const titleInput = document.getElementById("fTitle");
   if (this.value === "vacation") {
@@ -988,7 +962,6 @@ window.saveEvent = async function() {
       if (repeatType === "weekday" && repeatDays.length === 0) {
         addToast("반복 요일을 하나 이상 선택해주세요.", "error"); return;
       }
-      // 마스터 1개만 저장 (규칙 기반 - 무제한)
       data.repeatMaster = true;
       data.createdAt = serverTimestamp();
       await addDoc(eventsCol, data);
@@ -1004,25 +977,6 @@ window.saveEvent = async function() {
   }
 };
 
-function generateRepeatDates(startDate, type, endDate, days=[]) {
-  const dates = [];
-  const end = new Date(endDate);
-  let cur = new Date(startDate);
-  while (cur <= end && dates.length < 500) {
-    const dow = cur.getDay();
-    if (type === "weekday") {
-      if (days.includes(dow)) dates.push(cur.toISOString().slice(0,10));
-      cur.setDate(cur.getDate() + 1);
-    } else {
-      dates.push(cur.toISOString().slice(0,10));
-      if (type === "daily") cur.setDate(cur.getDate() + 1);
-      else if (type === "weekly") cur.setDate(cur.getDate() + 7);
-      else if (type === "monthly") cur.setMonth(cur.getMonth() + 1);
-    }
-  }
-  return dates;
-}
-
 window.deleteCurrentEvent = async function() {
   const ev = events.find(e => e.id === editingId);
   const isRepeat = ev && ev.repeatMaster;
@@ -1037,7 +991,6 @@ window.deleteCurrentEvent = async function() {
       } catch(e) { addToast("삭제 실패: " + e.message, "error"); }
       return;
     } else {
-      // 이 날만 예외 처리 - repeatExclude 배열에 추가
       try {
         const excludes = ev.repeatExclude || [];
         if (!excludes.includes(currentEditDate)) excludes.push(currentEditDate);
@@ -1106,7 +1059,6 @@ initFirebase();
   document.addEventListener("touchend", e => {
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
-    // 수평 스와이프만 (세로 스크롤과 구분)
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
       changeMonth(dx < 0 ? 1 : -1);
     }

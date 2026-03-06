@@ -285,13 +285,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
           <option value="departure">🚢 출항</option>
           <option value="arrival">⚓ 입항</option>
           <option value="container">📦 컨테이너입고</option>
-          <option value="incoming_cargo">🚛 화물입고</option>
-          <option value="incoming_visit">🟣 방문입고</option>
-          <option value="purchase">🟢 매입</option>
-          <option value="outgoing_visit">🟠 방문출고</option>
-          <option value="delivery">🔴 납품</option>
+          <option value="gmp">🔬 GMP</option>
+          <option value="biz_trip">💼 출장</option>
           <option value="vacation">🟡 휴가</option>
-          <option value="other">⚪ 기타</option>
         </select>
       </div>
     </div>
@@ -312,6 +308,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
             <option value="weekly">매주</option>
             <option value="weekday">특정 요일</option>
             <option value="monthly">매월</option>
+            <option value="yearly">매년</option>
           </select>
         </div>
         <div id="weekdayRow" style="display:none;gap:6px;flex-wrap:wrap">
@@ -472,19 +469,15 @@ function getHolidayName(dateStr) {
 }
 function isSubstituteHoliday(dateStr) { return !!SUBSTITUTE_HOLIDAYS[dateStr]; }
 
-// ⭐ 카테고리 (요청하신 순서대로 정렬)
+// ⭐ 요청하신 7개 카테고리 순서대로 정렬 + 이전 데이터 오류 방지용 보이지 않는 카테고리
 const CATS = {
   remittance:     { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "송금" },
   departure:      { bg: "#DB2777", light: "#FDF2F8", text: "#BE185D", label: "출항" },
-  arrival:        { bg: "#06B6D4", light: "#ECFEFF", text: "#0E7490", label: "입항" },
+  arrival:        { bg: "#0EA5E9", light: "#F0F9FF", text: "#0369A1", label: "입항" },
   container:      { bg: "#0D9488", light: "#F0FDFA", text: "#0F766E", label: "컨테이너입고" },
-  incoming_cargo: { bg: "#0EA5E9", light: "#F0F9FF", text: "#0369A1", label: "화물입고" },
-  incoming_visit: { bg: "#6366F1", light: "#EEF2FF", text: "#4338CA", label: "방문입고" },
-  purchase:       { bg: "#10B981", light: "#ECFDF5", text: "#047857", label: "매입" },
-  outgoing_visit: { bg: "#F97316", light: "#FFF7ED", text: "#C2410C", label: "방문출고" },
-  delivery:       { bg: "#EF4444", light: "#FEF2F2", text: "#B91C1C", label: "납품" },
-  vacation:       { bg: "#F59E0B", light: "#FFFBEB", text: "#B45309", label: "휴가" },
-  other:          { bg: "#8B5CF6", light: "#F5F3FF", text: "#6D28D9", label: "기타" },
+  gmp:            { bg: "#8B5CF6", light: "#F5F3FF", text: "#6D28D9", label: "GMP" },
+  biz_trip:       { bg: "#F97316", light: "#FFF7ED", text: "#C2410C", label: "출장" },
+  vacation:       { bg: "#F59E0B", light: "#FFFBEB", text: "#B45309", label: "휴가" }
 };
 
 const USER_COLORS = ["#06B6D4","#F97316","#EC4899","#14B8A6","#6366F1","#84CC16","#EF4444","#8B5CF6"];
@@ -570,7 +563,6 @@ function startAlarmLoop() {
 function checkAlarms() {
   const now = new Date();
   events.forEach(ev => {
-    // 시간이 없는 일정은 알람 무시
     if (!ev.alarm || ev.isCompleted || !ev.time) return;
     
     const alarmKey = `${ev.id}_${currentUser}`;
@@ -580,7 +572,9 @@ function checkAlarms() {
     const diffMin = (evTime - now) / 60000;
     if (diffMin <= (ev.alarmMinutes || 10) && diffMin > -2) {
       const minLabel = diffMin <= 0 ? "지금!" : `${Math.ceil(diffMin)}분 후`;
-      addToast(`🔔 [${CATS[ev.category]?.label}] ${ev.title} — ${minLabel}`, "alarm");
+      
+      const safeLabel = CATS[ev.category] ? CATS[ev.category].label : "일정";
+      addToast(`🔔 [${safeLabel}] ${ev.title} — ${minLabel}`, "alarm");
 
       if (Notification.permission === "granted") {
         new Notification("📅 온메디칼 캘린더 알림", {
@@ -675,6 +669,7 @@ function expandRepeatForMonth(ev, monthStart, monthEnd) {
     else if (type === "weekly") match = new Date(start).getDay() === dow;
     else if (type === "weekday") match = days.includes(dow);
     else if (type === "monthly") match = new Date(start).getDate() === cur.getDate();
+    else if (type === "yearly") match = start.slice(5) === dateStr.slice(5);
 
     const excluded = (ev.repeatExclude || []).includes(dateStr);
     const isHoliday = !!getHolidayName(dateStr);
@@ -735,13 +730,13 @@ function renderCells() {
       const chip = document.createElement("div");
       chip.className = "event-chip";
       if (ev.isCompleted) chip.classList.add("completed");
-      else chip.style.background = CATS[ev.category]?.bg || "#64748B";
+      else chip.style.background = CATS[ev.category]?.bg || "#94A3B8"; // 이전 카테고리면 회색 처리
       
       chip.title = `${ev.title} (${ev.author})`;
       
-      const iconStr = ev.isCompleted ? "✅ " : (ev.alarm ? "🔔" : "");
+      const iconStr = ev.isCompleted ? "✅ " : (ev.alarm && ev.time ? "🔔" : "");
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
-      const timeStr = ev.time ? ev.time + ' ' : ''; // 시간이 있으면 표시, 없으면 빈칸
+      const timeStr = ev.time ? ev.time + ' ' : '';
       
       chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
@@ -806,10 +801,9 @@ function renderList() {
 
   const now = new Date();
   container.innerHTML = sorted.length ? sorted.map(ev => {
-    const c = CATS[ev.category] || CATS.other;
+    const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     const uc = userColor(ev.author || "?");
     
-    // 시간이 비어있으면 자정으로 취급해서 과거 판별 (에러 방지)
     const evTime = ev.time ? new Date(`${ev.date}T${ev.time}`) : new Date(`${ev.date}T00:00:00`);
     const past = evTime < now;
     const isComp = ev.isCompleted;
@@ -821,7 +815,7 @@ function renderList() {
           <div style="font-size:22px;font-weight:900;color:${evTime.getDay()===0?"#EF4444":evTime.getDay()===6?"#3B82F6":"#1E293B"};line-height:1.1">${ev.date.slice(8)}</div>
         </div>
         <div class="list-info">
-          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm?"🔔 ":"")}${ev.title}</div>
+          <div class="list-title" style="${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div class="list-meta">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:flex;align-items:center;gap:4px">
@@ -842,7 +836,7 @@ window.openAddModal = function(dateStr) {
   document.getElementById("fTitle").value = "";
   document.getElementById("fDate").value = dateStr;
   document.getElementById("fEndDate").value = "";
-  document.getElementById("fTime").value = ""; // 기본값 빈칸
+  document.getElementById("fTime").value = "";
   document.getElementById("fCategory").value = "remittance"; // 기본 카테고리를 '송금'으로 변경
   document.getElementById("fDesc").value = "";
   document.getElementById("fRepeat").checked = false;
@@ -855,7 +849,6 @@ window.openAddModal = function(dateStr) {
   document.getElementById("fAlarmMin").value = "10";
   document.getElementById("alarmTimingRow").style.display = "flex";
   
-  // 버튼 숨김 처리
   document.getElementById("modalActionTop").style.display = "none";
   document.getElementById("deleteBtn").style.display = "none";
   document.getElementById("stopRepeatBtn").style.display = "none";
@@ -873,7 +866,14 @@ window.openEditModal = function(ev) {
   document.getElementById("fDate").value = ev.date;
   document.getElementById("fEndDate").value = ev.endDate || "";
   document.getElementById("fTime").value = ev.time || "";
-  document.getElementById("fCategory").value = ev.category;
+  
+  // 기존 카테고리가 삭제된 예전 데이터일 경우 드롭다운에서 선택할 수 있도록 방어 코드
+  if (!document.querySelector(`#fCategory option[value="${ev.category}"]`)) {
+      document.getElementById("fCategory").value = "other"; // 없으면 임시로 빈값 세팅
+  } else {
+      document.getElementById("fCategory").value = ev.category;
+  }
+  
   document.getElementById("fDesc").value = ev.description || "";
   const hasRepeat = !!ev.repeatType;
   document.getElementById("fRepeat").checked = hasRepeat;
@@ -889,7 +889,6 @@ window.openEditModal = function(ev) {
   document.getElementById("fAlarmMin").value = ev.alarmMinutes || 10;
   document.getElementById("alarmTimingRow").style.display = ev.alarm ? "flex" : "none";
   
-  // 버튼 표시 처리
   document.getElementById("modalActionTop").style.display = "flex";
   document.getElementById("deleteBtn").style.display = "block";
   document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none";
@@ -902,13 +901,13 @@ window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalTitle").textContent = `📅 ${dateStr.replace(/-/g,".")} 일정 (${dayEvs.length}개)`;
   const list = document.getElementById("dayModalList");
   list.innerHTML = dayEvs.map(ev => {
-    const c = CATS[ev.category] || CATS.other;
+    const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     const uc = userColor(ev.author || "?");
     const isComp = ev.isCompleted;
     return `
       <div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${isComp ? '#94A3B8' : c.bg};display:flex;align-items:center;gap:10px; opacity:${isComp ? 0.7 : 1}">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm?"🔔 ":"")}${ev.title}</div>
+          <div style="font-weight:700;font-size:14px; ${isComp ? 'text-decoration:line-through;color:#94A3B8;' : ''}">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">
             ${ev.time ? `<span>${ev.time}</span>` : ''}
             <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${uc}"></span>

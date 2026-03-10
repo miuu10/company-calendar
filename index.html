@@ -101,7 +101,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
 
-/* ⭐ 전용 지연 달력 팝업창 스타일 */
 #delayOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
 
 @media (max-width: 768px) {
@@ -157,7 +156,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   <div class="header-right">
     <button class="btn btn-ghost" onclick="mergeExistingEvents()" style="font-size:12px; padding:6px 10px; background:#F1F5F9; color:#475569; border-color:#CBD5E1;">🧹 기존 일정 통합</button>
     <button class="btn btn-ghost" onclick="document.getElementById('excelUpload').click()" style="font-size:12px; padding:6px 10px; background:#ECFEFF; color:#0E7490; border-color:#A5F3FC;">📥 엑셀 업로드</button>
-    <button class="btn btn-ghost" onclick="syncHolidays()" style="font-size:12px; padding:6px 10px; background:#FFFBEB; color:#B45309; border-color:#FDE68A;">🔄 휴일 자동수집</button>
+    <button class="btn btn-ghost" id="syncHolidayBtn" onclick="syncHolidays()" style="font-size:12px; padding:6px 10px; background:#FFFBEB; color:#B45309; border-color:#FDE68A;">🔄 휴일 수집</button>
     <button class="btn btn-ghost" id="viewToggleBtn" onclick="toggleView()" style="font-size:12px; padding:6px 10px;">📋 목록</button>
     <div class="user-chip" onclick="changeName()" title="이름 변경">
       <span>👤</span>
@@ -679,6 +678,11 @@ window.syncHolidays = async function() {
   const year = prompt("자동으로 불러올 연도를 입력하세요 (예: 2026)", currentYear);
   if (!year) return;
 
+  const existingHolidays = events.filter(e => e.isHoliday && e.date.startsWith(year));
+  if (existingHolidays.length > 0) {
+      if(!confirm(`✅ 이미 ${year}년 공휴일이 등록되어 있습니다!\n(그래도 혹시 모를 누락분을 다시 확인하시겠습니까?)`)) return;
+  }
+
   const krApiKey = "Fc622d1df47731ef7f69d7e1b0ef44b69810e80166c6783ef467c49e469b7bbc";
 
   document.getElementById("loadingScreen").style.display = "flex";
@@ -783,6 +787,22 @@ function renderAll() {
   buildFilterBar();
   renderCells();
   renderList();
+
+  const syncBtn = document.getElementById("syncHolidayBtn");
+  if (syncBtn) {
+    const hasHolidays = events.some(e => e.isHoliday && e.date.startsWith(currentYear.toString()));
+    if (hasHolidays) {
+      syncBtn.innerHTML = `✅ ${currentYear}년 휴일 완료`;
+      syncBtn.style.background = "#ECFDF5";
+      syncBtn.style.color = "#047857";
+      syncBtn.style.borderColor = "#A7F3D0";
+    } else {
+      syncBtn.innerHTML = `🔄 ${currentYear}년 휴일 수집`;
+      syncBtn.style.background = "#FFFBEB";
+      syncBtn.style.color = "#B45309";
+      syncBtn.style.borderColor = "#FDE68A";
+    }
+  }
 }
 
 function buildFilterBar() {
@@ -1021,11 +1041,16 @@ function renderList() {
 
 window.toggleListMode = function() { listMode = listMode === "month" ? "year" : "month"; renderAll(); };
 
+// ⭐ 시작 날짜 바뀔 때, 단일 일정이면 빈칸 유지하도록 수정
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("fDate").addEventListener("change", function() {
     const endEl = document.getElementById("fEndDate");
     endEl.min = this.value;
-    if (!endEl.value || endEl.value < this.value) endEl.value = this.value;
+    // 이미 종료 날짜가 입력되어 있는데, 시작 날짜보다 과거가 되어버리면 시작 날짜로 채워줌
+    // 그 외에 빈칸이었을 때는 오지랖 부리지 않고 그대로 빈칸 유지!
+    if (endEl.value && endEl.value < this.value) {
+      endEl.value = this.value;
+    }
   });
 });
 
@@ -1033,37 +1058,53 @@ window.openAddModal = function(dateStr) {
   editingId = null;
   document.getElementById("modalTitle").textContent = "➕ 일정 추가";
   document.getElementById("fTitle").value = "";
-  document.getElementById("fDate").value = dateStr; document.getElementById("fEndDate").value = ""; document.getElementById("fEndDate").min = dateStr;   
-  document.getElementById("fTime").value = ""; document.getElementById("fCategory").value = "remittance"; document.getElementById("fDesc").value = "";
-  document.getElementById("fRepeat").checked = false; document.getElementById("repeatRow").style.display = "none"; document.getElementById("weekdayRow").style.display = "none"; document.getElementById("fRepeatType").value = "weekly"; document.getElementById("fRepeatEnd").value = "";
+  document.getElementById("fDate").value = dateStr; 
+  document.getElementById("fEndDate").value = ""; 
+  document.getElementById("fEndDate").min = dateStr;   
+  document.getElementById("fTime").value = ""; 
+  document.getElementById("fCategory").value = "remittance"; 
+  document.getElementById("fDesc").value = "";
+  document.getElementById("fRepeat").checked = false; 
+  document.getElementById("repeatRow").style.display = "none"; 
+  document.getElementById("weekdayRow").style.display = "none"; 
+  document.getElementById("fRepeatType").value = "weekly"; 
+  document.getElementById("fRepeatEnd").value = "";
   document.querySelectorAll(".dow-check").forEach(c => c.checked = false);
-  document.getElementById("fAlarm").checked = false; document.getElementById("alarmTimingRow").style.display = "none";
+  document.getElementById("fAlarm").checked = false; 
+  document.getElementById("alarmTimingRow").style.display = "none";
   document.getElementById("modalActionTop").style.display = "none";
   document.getElementById("overlay").style.display = "flex";
   setTimeout(() => document.getElementById("fTitle").focus(), 100);
 };
 
-// ⭐ 수정 창 열 때 '종료 날짜' 빈칸 처리 로직 
 window.openEditModal = function(ev) {
   editingId = ev.id; currentEditDate = ev.date;
   document.getElementById("modalTitle").textContent = "✏️ 일정 수정";
   document.getElementById("fTitle").value = ev.title;
   document.getElementById("fDate").value = ev.origDate || ev.date; 
   
-  // 원래 단일 일정이면 종료 날짜는 공백으로 둠
-  document.getElementById("fEndDate").value = ev.origEndDate || ev.endDate || ""; 
+  // ⭐ 단일 일정이면 종료 날짜 무조건 빈칸으로 표시
+  let displayEndDate = ev.origEndDate || ev.endDate || "";
+  if (displayEndDate === (ev.origDate || ev.date)) {
+      displayEndDate = "";
+  }
+  document.getElementById("fEndDate").value = displayEndDate; 
   document.getElementById("fEndDate").min = ev.origDate || ev.date;
   
   document.getElementById("fTime").value = ev.time || "";
   document.getElementById("fCategory").value = document.querySelector(`#fCategory option[value="${ev.category}"]`) ? ev.category : "other";
   document.getElementById("fDesc").value = ev.description || "";
-  document.getElementById("fRepeat").checked = !!ev.repeatType; document.getElementById("fRepeatType").value = ev.repeatType || "weekly"; document.getElementById("fRepeatEnd").value = ev.repeatEnd || ""; document.getElementById("repeatRow").style.display = ev.repeatType ? "flex" : "none"; document.getElementById("weekdayRow").style.display = ev.repeatType === "weekday" ? "flex" : "none";
+  document.getElementById("fRepeat").checked = !!ev.repeatType; 
+  document.getElementById("fRepeatType").value = ev.repeatType || "weekly"; 
+  document.getElementById("fRepeatEnd").value = ev.repeatEnd || ""; 
+  document.getElementById("repeatRow").style.display = ev.repeatType ? "flex" : "none"; 
+  document.getElementById("weekdayRow").style.display = ev.repeatType === "weekday" ? "flex" : "none";
   document.querySelectorAll(".dow-check").forEach(c => c.checked = ev.repeatType === "weekday" && (ev.repeatDays || []).includes(Number(c.value)));
-  document.getElementById("fAlarm").checked = ev.alarm; document.getElementById("alarmTimingRow").style.display = ev.alarm ? "flex" : "none";
+  document.getElementById("fAlarm").checked = ev.alarm; 
+  document.getElementById("alarmTimingRow").style.display = ev.alarm ? "flex" : "none";
   
   document.getElementById("modalActionTop").style.display = "flex"; 
   document.getElementById("deleteBtn").style.display = "block"; 
-  // 연기 버튼 활성화
   document.getElementById("delayBtn").style.display = "block"; 
   document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none"; 
   document.getElementById("completeBtn").style.display = !ev.isCompleted ? "block" : "none";
@@ -1071,7 +1112,6 @@ window.openEditModal = function(ev) {
   document.getElementById("overlay").style.display = "flex";
 };
 
-// ⭐ 새로운 팝업형 연기(지연) 기능
 window.openDelayModal = function() {
   const ev = events.find(e => e.id === editingId);
   if(!ev) return;
@@ -1079,6 +1119,7 @@ window.openDelayModal = function() {
   document.getElementById("delayOverlay").style.display = "flex";
 };
 
+// ⭐ 연기(지연) 시 빈칸 처리 로직 강화
 window.confirmDelay = async function() {
   const ev = events.find(e => e.id === editingId);
   if(!ev) return;
@@ -1097,6 +1138,9 @@ window.confirmDelay = async function() {
     const nextStart = new Date(newDate + "T00:00:00");
     const nextEnd = new Date(nextStart.getTime() + diffTime);
     newEndDate = toLocalISO(nextEnd);
+  } else {
+    // 기간 일정이 아니면 명시적으로 빈칸 처리
+    newEndDate = "";
   }
 
   let newTitle = ev.title;
@@ -1125,7 +1169,6 @@ window.confirmDelay = async function() {
     addToast("오류: " + e.message, "error");
   }
 };
-
 
 window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalTitle").textContent = `📅 ${dateStr.replace(/-/g,".")} 일정 (${dayEvs.length}개)`;
@@ -1175,12 +1218,16 @@ window.closeModal = function() { document.getElementById("overlay").style.displa
 window.toggleRepeatUI = function() { const c = document.getElementById("fRepeat").checked; document.getElementById("repeatRow").style.display = c ? "flex" : "none"; document.getElementById("weekdayRow").style.display = (c && document.getElementById("fRepeatType").value === "weekday") ? "flex" : "none"; };
 window.toggleAlarmUI = function() { document.getElementById("alarmTimingRow").style.display = document.getElementById("fAlarm").checked ? "flex" : "none"; };
 
+// ⭐ 저장 버튼 누를 때도 빈칸 처리 확인
 window.saveEvent = async function() {
   const title = document.getElementById("fTitle").value.trim(), date = document.getElementById("fDate").value;
   let endDate = document.getElementById("fEndDate").value;
   const time = document.getElementById("fTime").value || "";
+  
   if (!title || !date) { addToast("제목과 날짜를 입력해주세요.", "error"); return; }
   if (endDate && endDate < date) { addToast("종료 날짜는 시작 날짜 이후여야 합니다.", "error"); return; }
+  
+  // 시작일과 종료일이 같으면 그냥 하루짜리 일정으로 취급하여 빈칸으로 만듦
   if (endDate === date) endDate = "";
 
   const data = { title, date, time, category: document.getElementById("fCategory").value, description: document.getElementById("fDesc").value, alarm: document.getElementById("fAlarm").checked, alarmMinutes: Number(document.getElementById("fAlarmMin").value), author: currentUser, updatedAt: serverTimestamp() };

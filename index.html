@@ -323,8 +323,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     </div>
     
     <div style="display:flex; flex-direction:column; gap:8px; margin-top:24px;">
-      <div id="modalActionTop" style="display:none; gap:8px; width:100%;">
+      <div id="modalActionTop" style="display:none; gap:8px; width:100%; flex-wrap:wrap;">
         <button class="btn btn-danger-soft" id="deleteBtn" style="display:none; flex:1; padding:12px 0;" onclick="deleteCurrentEvent()">삭제</button>
+        <button class="btn" id="delayBtn" style="display:none; flex:1; padding:12px 0; background:#F59E0B; color:#fff;" onclick="delayEvent()">⏳ 연기(지연)</button>
         <button class="btn" id="stopRepeatBtn" style="display:none; flex:1; padding:12px 0; background:#FFF7ED; color:#EA580C; border:1px solid #FED7AA;" onclick="stopRepeatFromHere()">🔁 중단</button>
         <button class="btn" id="completeBtn" style="display:none; flex:1; padding:12px 0; background:#10B981; color:#fff;" onclick="markCompleted()">✅ 완료</button>
       </div>
@@ -399,19 +400,15 @@ function getDynamicHolidays(dateStr) {
   return { kr, isSub, foreign };
 }
 
-// ⭐ 주말 및 공휴일 판별 함수 (카테고리별 예외 처리 포함)
 function isWorkingDay(dateStr, category) {
-  // 1. 휴일/주말을 무시하고 무조건 달력에 표시해야 하는 카테고리들
   const skipHolidaySkip = ["production", "arrival", "departure", "biz_trip"].includes(category);
   if (skipHolidaySkip) return true;
 
-  // 2. 그 외 카테고리(송금, 휴가, GMP 등)는 주말(토,일)이거나 한국 공휴일이면 달력에서 숨김
   const dow = new Date(dateStr + "T00:00:00").getDay();
-  const isWeekend = (dow === 0 || dow === 6); // 0=일요일, 6=토요일
+  const isWeekend = (dow === 0 || dow === 6); 
   const isHol = !!getDynamicHolidays(dateStr).kr;
 
   if (isWeekend || isHol) return false;
-
   return true;
 }
 
@@ -470,10 +467,8 @@ function initFirebase() {
   }
 }
 
-// 기존 DB 정리 묶어주기 버튼 (원클릭)
 window.mergeExistingEvents = async function() {
   if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 깔끔하게 정리합니다.\n(중복 데이터도 모두 삭제됩니다.) 진행하시겠습니까?")) return;
-
   document.getElementById("loadingScreen").style.display = "flex";
   document.querySelector("#loadingText").textContent = "기존 일정들을 분석하여 병합 중입니다...";
 
@@ -489,8 +484,7 @@ window.mergeExistingEvents = async function() {
           groups[key].push(ev);
       });
 
-      let deleteCount = 0;
-      let updateCount = 0;
+      let deleteCount = 0, updateCount = 0;
 
       for (let key in groups) {
           let group = groups[key];
@@ -796,7 +790,6 @@ function getDisplayTitle(ev) {
     return displayTitle;
 }
 
-// ⭐ 기간 일정 렌더링 (주말/공휴일 예외처리 완벽 적용)
 function filteredEvents(periodStart, periodEnd, isListView = false) {
   const base = activeFilter === "all" ? events : events.filter(e => e.author === activeFilter);
   const expanded = [];
@@ -821,7 +814,6 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
 
            while (cur <= end) {
              const dStr = toLocalISO(cur);
-             // ⭐ 평일이거나 특정 업무일 때만 달력에 표시
              if (dStr >= periodStart && dStr <= periodEnd && isWorkingDay(dStr, ev.category)) {
                expanded.push({ ...ev, date: dStr, origDate: sDate, origEndDate: formattedEnd, _virtual: ev.repeatMaster, _multiDay: true });
              }
@@ -829,7 +821,6 @@ function filteredEvents(periodStart, periodEnd, isListView = false) {
            }
         }
       } else {
-        // ⭐ 단일 일정도 주말/공휴일 필터 통과해야 달력에 표시 (특정 카테고리 제외)
         if (sDate >= periodStart && sDate <= periodEnd && isWorkingDay(sDate, ev.category)) {
             expanded.push({ ...ev, date: sDate, _virtual: ev.repeatMaster });
         }
@@ -867,7 +858,6 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
         if (durationDays > 0) {
             results.push(dateStr);
         } else {
-            // ⭐ 단일 반복 일정 필터
             if (isWorkingDay(dateStr, ev.category)) results.push(dateStr);
         }
     }
@@ -1050,10 +1040,59 @@ window.openEditModal = function(ev) {
   
   document.getElementById("modalActionTop").style.display = "flex"; 
   document.getElementById("deleteBtn").style.display = "block"; 
+  // ⭐ 연기(지연) 버튼 활성화
+  document.getElementById("delayBtn").style.display = "block"; 
   document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none"; 
   document.getElementById("completeBtn").style.display = !ev.isCompleted ? "block" : "none";
   
   document.getElementById("overlay").style.display = "flex";
+};
+
+// ⭐ 일정 연기(지연) 기능
+window.delayEvent = async function() {
+  const ev = events.find(e => e.id === editingId);
+  if(!ev) return;
+
+  const newDate = prompt("⏳ 일정을 연기(지연)합니다.\n변경될 새로운 시작 날짜를 입력해주세요 (YYYY-MM-DD):", ev.date);
+  if(!newDate || newDate === ev.date) return;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+    addToast("올바른 날짜 형식(YYYY-MM-DD)이 아닙니다.", "error");
+    return;
+  }
+
+  let newEndDate = ev.endDate;
+  // 기간 일정이었을 경우 미뤄진 일수만큼 종료일도 함께 연장
+  if (ev.endDate && ev.endDate > ev.date) {
+    const oldStart = new Date(ev.date + "T00:00:00");
+    const oldEnd = new Date(ev.endDate + "T00:00:00");
+    const diffTime = oldEnd - oldStart;
+    
+    const nextStart = new Date(newDate + "T00:00:00");
+    const nextEnd = new Date(nextStart.getTime() + diffTime);
+    newEndDate = toLocalISO(nextEnd);
+  } else if (ev.endDate === ev.date) {
+    newEndDate = newDate;
+  }
+
+  // 제목에 [지연] 표시 추가
+  let newTitle = ev.title;
+  if (!newTitle.includes("[지연]")) {
+    newTitle = "[지연] " + newTitle;
+  }
+
+  try {
+    await updateDoc(doc(db, "events", editingId), {
+      date: newDate,
+      endDate: newEndDate || null,
+      title: newTitle,
+      updatedAt: serverTimestamp()
+    });
+    addToast("⏳ 일정이 성공적으로 연기되었습니다.", "success");
+    closeModal();
+  } catch(e) {
+    addToast("오류: " + e.message, "error");
+  }
 };
 
 window.openDayModal = function(dateStr, dayEvs) {

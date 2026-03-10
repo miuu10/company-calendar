@@ -100,6 +100,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .alarm-toggle input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--blue); cursor: pointer; }
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
+
+/* ⭐ 전용 지연 달력 팝업창 스타일 */
+#delayOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
+
 @media (max-width: 768px) {
   header { padding: 0 14px; height: auto; padding-top:10px; padding-bottom:10px; flex-direction:column; gap:10px; align-items:flex-start;}
   .header-brand h1 { font-size: 15px; }
@@ -204,6 +208,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   </div>
 </main>
 
+
 <div class="overlay" id="dayOverlay" style="display:none" onclick="if(event.target===this)document.getElementById('dayOverlay').style.display='none'">
   <div class="modal" style="max-width:500px">
     <div class="modal-header">
@@ -212,6 +217,18 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     </div>
     <div id="dayModalList" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto"></div>
     <button class="btn btn-primary" id="dayAddBtn" style="width:100%;margin-top:16px;padding:13px;font-size:14px">+ 이 날 일정 추가</button>
+  </div>
+</div>
+
+<div class="overlay" id="delayOverlay" style="display:none" onclick="if(event.target===this)document.getElementById('delayOverlay').style.display='none'">
+  <div class="modal" style="max-width:320px; text-align:center; padding:24px;">
+    <h3 style="margin-bottom:10px; font-weight:900;">⏳ 일정 연기(지연)</h3>
+    <p style="font-size:13px; color:var(--slate); margin-bottom:20px;">며칠로 일정이 미뤄졌나요?</p>
+    <input type="date" id="delayDatePicker" class="form-input" style="margin-bottom:20px; width:100%; text-align:center; font-weight:700; font-size:16px;" />
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-ghost" style="flex:1; padding:12px 0;" onclick="document.getElementById('delayOverlay').style.display='none'">취소</button>
+      <button class="btn btn-primary" style="flex:1; padding:12px 0; background:#F59E0B; color:#fff;" onclick="confirmDelay()">연기하기</button>
+    </div>
   </div>
 </div>
 
@@ -261,7 +278,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 
     <div class="form-group">
       <label class="form-label">메모</label>
-      <textarea class="form-input" id="fDesc" rows="2" placeholder="추가 설명 (선택)" style="resize:vertical"></textarea>
+      <textarea class="form-input" id="fDesc" rows="4" placeholder="추가 설명 (선택)" style="resize:vertical"></textarea>
     </div>
     
     <div class="form-group alarm-box" style="margin-bottom:10px">
@@ -325,7 +342,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     <div style="display:flex; flex-direction:column; gap:8px; margin-top:24px;">
       <div id="modalActionTop" style="display:none; gap:8px; width:100%; flex-wrap:wrap;">
         <button class="btn btn-danger-soft" id="deleteBtn" style="display:none; flex:1; padding:12px 0;" onclick="deleteCurrentEvent()">삭제</button>
-        <button class="btn" id="delayBtn" style="display:none; flex:1; padding:12px 0; background:#F59E0B; color:#fff;" onclick="delayEvent()">⏳ 연기(지연)</button>
+        <button class="btn" id="delayBtn" style="display:none; flex:1; padding:12px 0; background:#F59E0B; color:#fff;" onclick="openDelayModal()">⏳ 연기(지연)</button>
         <button class="btn" id="stopRepeatBtn" style="display:none; flex:1; padding:12px 0; background:#FFF7ED; color:#EA580C; border:1px solid #FED7AA;" onclick="stopRepeatFromHere()">🔁 중단</button>
         <button class="btn" id="completeBtn" style="display:none; flex:1; padding:12px 0; background:#10B981; color:#fff;" onclick="markCompleted()">✅ 완료</button>
       </div>
@@ -1016,7 +1033,7 @@ window.openAddModal = function(dateStr) {
   editingId = null;
   document.getElementById("modalTitle").textContent = "➕ 일정 추가";
   document.getElementById("fTitle").value = "";
-  document.getElementById("fDate").value = dateStr; document.getElementById("fEndDate").value = dateStr; document.getElementById("fEndDate").min = dateStr;   
+  document.getElementById("fDate").value = dateStr; document.getElementById("fEndDate").value = ""; document.getElementById("fEndDate").min = dateStr;   
   document.getElementById("fTime").value = ""; document.getElementById("fCategory").value = "remittance"; document.getElementById("fDesc").value = "";
   document.getElementById("fRepeat").checked = false; document.getElementById("repeatRow").style.display = "none"; document.getElementById("weekdayRow").style.display = "none"; document.getElementById("fRepeatType").value = "weekly"; document.getElementById("fRepeatEnd").value = "";
   document.querySelectorAll(".dow-check").forEach(c => c.checked = false);
@@ -1026,11 +1043,17 @@ window.openAddModal = function(dateStr) {
   setTimeout(() => document.getElementById("fTitle").focus(), 100);
 };
 
+// ⭐ 수정 창 열 때 '종료 날짜' 빈칸 처리 로직 
 window.openEditModal = function(ev) {
   editingId = ev.id; currentEditDate = ev.date;
   document.getElementById("modalTitle").textContent = "✏️ 일정 수정";
   document.getElementById("fTitle").value = ev.title;
-  document.getElementById("fDate").value = ev.origDate || ev.date; document.getElementById("fEndDate").value = ev.origEndDate || ev.endDate || ev.origDate || ev.date; document.getElementById("fEndDate").min = ev.origDate || ev.date;
+  document.getElementById("fDate").value = ev.origDate || ev.date; 
+  
+  // 원래 단일 일정이면 종료 날짜는 공백으로 둠
+  document.getElementById("fEndDate").value = ev.origEndDate || ev.endDate || ""; 
+  document.getElementById("fEndDate").min = ev.origDate || ev.date;
+  
   document.getElementById("fTime").value = ev.time || "";
   document.getElementById("fCategory").value = document.querySelector(`#fCategory option[value="${ev.category}"]`) ? ev.category : "other";
   document.getElementById("fDesc").value = ev.description || "";
@@ -1040,7 +1063,7 @@ window.openEditModal = function(ev) {
   
   document.getElementById("modalActionTop").style.display = "flex"; 
   document.getElementById("deleteBtn").style.display = "block"; 
-  // ⭐ 연기(지연) 버튼 활성화
+  // 연기 버튼 활성화
   document.getElementById("delayBtn").style.display = "block"; 
   document.getElementById("stopRepeatBtn").style.display = ev.repeatGroupId ? "block" : "none"; 
   document.getElementById("completeBtn").style.display = !ev.isCompleted ? "block" : "none";
@@ -1048,37 +1071,43 @@ window.openEditModal = function(ev) {
   document.getElementById("overlay").style.display = "flex";
 };
 
-// ⭐ 일정 연기(지연) 기능
-window.delayEvent = async function() {
+// ⭐ 새로운 팝업형 연기(지연) 기능
+window.openDelayModal = function() {
   const ev = events.find(e => e.id === editingId);
   if(!ev) return;
+  document.getElementById("delayDatePicker").value = ev.date;
+  document.getElementById("delayOverlay").style.display = "flex";
+};
 
-  const newDate = prompt("⏳ 일정을 연기(지연)합니다.\n변경될 새로운 시작 날짜를 입력해주세요 (YYYY-MM-DD):", ev.date);
-  if(!newDate || newDate === ev.date) return;
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
-    addToast("올바른 날짜 형식(YYYY-MM-DD)이 아닙니다.", "error");
-    return;
+window.confirmDelay = async function() {
+  const ev = events.find(e => e.id === editingId);
+  if(!ev) return;
+  
+  const newDate = document.getElementById("delayDatePicker").value;
+  if(!newDate || newDate === ev.date) {
+    document.getElementById("delayOverlay").style.display = "none";
+    return; 
   }
 
   let newEndDate = ev.endDate;
-  // 기간 일정이었을 경우 미뤄진 일수만큼 종료일도 함께 연장
   if (ev.endDate && ev.endDate > ev.date) {
     const oldStart = new Date(ev.date + "T00:00:00");
     const oldEnd = new Date(ev.endDate + "T00:00:00");
     const diffTime = oldEnd - oldStart;
-    
     const nextStart = new Date(newDate + "T00:00:00");
     const nextEnd = new Date(nextStart.getTime() + diffTime);
     newEndDate = toLocalISO(nextEnd);
-  } else if (ev.endDate === ev.date) {
-    newEndDate = newDate;
   }
 
-  // 제목에 [지연] 표시 추가
   let newTitle = ev.title;
   if (!newTitle.includes("[지연]")) {
     newTitle = "[지연] " + newTitle;
+  }
+
+  let newMemo = ev.description || "";
+  let delayMsg = `[지연됨] 기존 날짜: ${ev.date}`;
+  if (!newMemo.includes(delayMsg)) {
+    newMemo = newMemo ? newMemo + "\n" + delayMsg : delayMsg;
   }
 
   try {
@@ -1086,14 +1115,17 @@ window.delayEvent = async function() {
       date: newDate,
       endDate: newEndDate || null,
       title: newTitle,
+      description: newMemo,
       updatedAt: serverTimestamp()
     });
     addToast("⏳ 일정이 성공적으로 연기되었습니다.", "success");
+    document.getElementById("delayOverlay").style.display = "none";
     closeModal();
   } catch(e) {
     addToast("오류: " + e.message, "error");
   }
 };
+
 
 window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalTitle").textContent = `📅 ${dateStr.replace(/-/g,".")} 일정 (${dayEvs.length}개)`;

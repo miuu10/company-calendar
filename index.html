@@ -53,13 +53,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .cell:hover { background: #F8FAFC; }
 .cell.today { background: #EFF6FF; }
 .cell.empty { cursor: default; background: #FAFAFA; }
+/* 드래그 오버 시 효과 */
+.cell.drag-over { background: #E2E8F0 !important; outline: 2px dashed var(--blue); outline-offset: -2px; }
+
 .day-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: var(--navy3); margin-bottom: 3px; }
 .day-num.is-today { background: var(--blue); color: #fff; font-weight: 900; }
 .day-num.is-sun { color: var(--red); }
 .day-num.is-sat { color: var(--blue); }
-.event-chip { border-radius: 5px; padding: 2px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 2px; cursor: pointer; display: flex; align-items: center; gap: 3px; width: 100%; max-width: 100%; }
+.event-chip { border-radius: 5px; padding: 2px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 2px; cursor: pointer; display: flex; align-items: center; gap: 3px; width: 100%; max-width: 100%; transition: opacity 0.2s; }
 .event-chip:hover { filter: brightness(1.15); }
-/* ⭐ 완료된 일정의 취소선을 지우고 투명도만 살짝 낮춰서 원래 색을 예쁘게 보여줌 */
 .event-chip.completed { opacity: 0.65; }
 .chip-author { font-size: 10px; opacity: .8; flex-shrink: 0; }
 .more-badge { font-size: 10px; color: var(--muted); padding-left: 3px; }
@@ -171,7 +173,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   <div id="calView">
     <div class="cal-nav">
       <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
-      <div style="text-align:center"><h2 id="monthTitle"></h2><p style="font-size:12px;color:#94A3B8;margin-top:4px">📌 날짜를 클릭하면 일정 추가</p><button onclick="goToday()" style="margin-top:6px;background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button></div>
+      <div style="text-align:center"><h2 id="monthTitle"></h2><p style="font-size:12px;color:#94A3B8;margin-top:4px">📌 일정을 드래그해서 옮기거나, 빈칸을 클릭해 추가하세요!</p><button onclick="goToday()" style="margin-top:6px;background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button></div>
       <button class="btn-arrow" onclick="changeMonth(1)">›</button>
     </div>
 
@@ -903,7 +905,6 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
   return results;
 }
 
-// ⭐ 완료 시 원래 색깔 살리고 예쁘게 표시되게 적용 
 function renderCells() {
   const firstDay = new Date(currentYear, currentMonth, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -927,6 +928,18 @@ function renderCells() {
     const cell = document.createElement("div");
     cell.className = "cell" + (isToday ? " today" : "");
     cell.onclick = () => dayEvs.length > 0 ? openDayModal(dateStr, dayEvs) : openAddModal(dateStr);
+
+    // ⭐ 드래그 앤 드롭: 놓는 영역(Target) 설정
+    cell.ondragover = (e) => { e.preventDefault(); cell.classList.add("drag-over"); };
+    cell.ondragleave = (e) => { cell.classList.remove("drag-over"); };
+    cell.ondrop = (e) => {
+        e.preventDefault();
+        cell.classList.remove("drag-over");
+        const dataStr = e.dataTransfer.getData("application/json");
+        if (!dataStr) return;
+        const data = JSON.parse(dataStr);
+        moveEvent(data.id, data.oldDate, dateStr);
+    };
 
     const dynHol = getDynamicHolidays(dateStr);
     if (dynHol.kr) cell.style.background = isToday ? "#FEF3C7" : (dynHol.isSub ? "#FFF7ED" : "#FFFBEB");
@@ -953,7 +966,6 @@ function renderCells() {
       const chip = document.createElement("div");
       chip.className = "event-chip";
       
-      // 배경색 무조건 원래 카테고리 색상으로 유지!
       chip.style.background = CATS[ev.category]?.bg || "#94A3B8";
       if (ev.isCompleted) chip.classList.add("completed"); 
       
@@ -964,6 +976,17 @@ function renderCells() {
       
       chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
+
+      // ⭐ 드래그 앤 드롭: 칩을 드래그 가능하게 설정 (단, 반복 일정은 꼬임 방지를 위해 드래그 금지)
+      if (!ev._virtual) {
+          chip.draggable = true;
+          chip.ondragstart = (e) => {
+              e.dataTransfer.setData("application/json", JSON.stringify({ id: ev.id, oldDate: ev.origDate || ev.date }));
+          };
+      } else {
+          chip.title += "\n(반복 일정은 드래그 이동이 불가능합니다.)";
+      }
+
       cellTop.appendChild(chip);
     });
     
@@ -992,6 +1015,37 @@ function renderCells() {
   }
   document.getElementById("legend").innerHTML = Object.entries(CATS).map(([,c]) => `<span class="legend-item" style="background:${c.light};color:${c.text}">● ${c.label}</span>`).join("");
 }
+
+// ⭐ 드래그 앤 드롭 이동 처리 (기간 일정도 기간 유지하며 똑똑하게 이동!)
+window.moveEvent = async function(id, oldDateStr, newDateStr) {
+    if (oldDateStr === newDateStr) return;
+    const ev = events.find(e => e.id === id);
+    if (!ev) return;
+
+    let newEndDate = ev.endDate;
+    if (ev.endDate && ev.endDate > ev.date) {
+        const oldStart = new Date(ev.date + "T00:00:00");
+        const oldEnd = new Date(ev.endDate + "T00:00:00");
+        const diffTime = oldEnd - oldStart;
+        
+        const nextStart = new Date(newDateStr + "T00:00:00");
+        const nextEnd = new Date(nextStart.getTime() + diffTime);
+        newEndDate = toLocalISO(nextEnd);
+    } else {
+        newEndDate = "";
+    }
+
+    try {
+        await updateDoc(doc(db, "events", id), {
+            date: newDateStr,
+            endDate: newEndDate || null,
+            updatedAt: serverTimestamp()
+        });
+        addToast("✅ 일정이 이동되었습니다.", "success");
+    } catch (err) {
+        addToast("이동 실패: " + err.message, "error");
+    }
+};
 
 function renderList() {
   const titleEl = document.getElementById("listMonthTitle");
@@ -1031,7 +1085,6 @@ function renderList() {
         dateBoxHtml = `<div style="font-size:11px;color:#94A3B8;font-weight:700">${["일","월","화","수","목","금","토"][dateObj.getDay()]}</div><div style="font-size:${listMode==="year"?"18px":"22px"};font-weight:900;color:${dateObj.getDay()===0?"#EF4444":dateObj.getDay()===6?"#3B82F6":"#1E293B"};line-height:1.1">${listMode==="year"?parseInt(ev.date.slice(5,7),10)+"/"+parseInt(ev.date.slice(8,10),10):parseInt(ev.date.slice(8,10),10)}</div>`;
     }
     
-    // ⭐ 완료된 항목에서 취소선(strike) 빼고, 원래 배경색상 사용
     return `
       <div class="list-item" style="border-left:4px solid ${c.bg};opacity:${past||isComp?0.6:1}">
         <div style="text-align:center;min-width:48px;">${dateBoxHtml}</div>
@@ -1174,7 +1227,6 @@ window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalTitle").textContent = `📅 ${dateStr.replace(/-/g,".")} 일정 (${dayEvs.length}개)`;
   document.getElementById("dayModalList").innerHTML = dayEvs.map(ev => {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
-    // ⭐ 상세 모달창에서도 취소선 제거 및 예쁜 컬러 유지 적용
     return `<div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${c.bg};display:flex;align-items:center;gap:10px; opacity:${ev.isCompleted ? 0.65 : 1}">
         <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;">${ev.isCompleted?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div><div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${userColor(ev.author||"?")}"></span><span>${ev.author || ""}</span></div></div>
         <span style="background:${c.light};color:${c.text};padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;flex-shrink:0">${c.label}</span>

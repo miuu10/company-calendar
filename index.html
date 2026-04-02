@@ -120,7 +120,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; }
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
 #delayOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
-@media (max-width: 1100px) { .sidebar { display: none; } .cal-with-sidebar { display: block; } }
+@media (max-width: 1100px) {
+  .cal-with-sidebar { flex-direction: column; }
+  .sidebar { width: 100%; position: static; }
+  .sidebar-body { max-height: 400px; }
+}
 @media (max-width: 768px) {
   header { padding: 0 14px; height: auto; padding-top:10px; padding-bottom:10px; flex-direction:column; gap:10px; align-items:flex-start;}
   .header-brand h1 { font-size: 15px; } .header-brand p { display: none; }
@@ -130,6 +134,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; }
   .modal { padding: 22px 18px; } .form-row2 { grid-template-columns: 1fr; }
   .filter-bar { gap: 5px; } .filter-chip { font-size: 11px; padding: 4px 10px; }
   .btn-arrow { width: 34px; height: 34px; } .day-header { font-size: 11px; padding: 10px 0; }
+  .sidebar-body { max-height: 320px; }
+  .sidebar-cat-tab { font-size: 10px; padding: 3px 7px; }
 }
 </style>
 </head>

@@ -113,9 +113,13 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
 .alarm-timing { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 13px; color: var(--slate); }
 .alarm-timing select { width: auto; padding: 5px 10px; }
 #delayOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
+@keyframes slideFromRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideFromLeft  { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
+.slide-from-right { animation: slideFromRight 0.22s ease; }
+.slide-from-left  { animation: slideFromLeft  0.22s ease; }
 @media (max-width: 1100px) {
   .cal-with-sidebar { flex-direction: column; }
-  .sidebar { width: 100%; position: static; }
+  .sidebar { width: 100%; position: static; order: -1; }
   .sidebar-body { max-height: 400px; }
 }
 @media (max-width: 768px) {
@@ -123,12 +127,12 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   .header-brand h1 { font-size: 15px; } .header-brand p { display: none; }
   .header-right { display: none; }
   #mobileCatBar { display: flex !important; }
-  main { padding: 14px 8px 32px; } .cal-nav h2 { font-size: 20px; }
+  main { padding: 14px 8px 32px; }
   .cal-nav-title h2 { font-size: 20px; }
   .cell { min-height: 60px; padding: 4px 2px; } .event-chip { font-size: 10px; padding: 3px 4px; margin-bottom: 2px; }
   .modal { padding: 22px 18px; } .form-row2 { grid-template-columns: 1fr; }
-  .filter-bar { gap: 5px; } .filter-chip { font-size: 11px; padding: 4px 10px; }
   .btn-arrow { width: 34px; height: 34px; } .day-header { font-size: 11px; padding: 10px 0; }
+  .sidebar { order: -1; }
   .sidebar-body { max-height: 320px; }
   .sidebar-cat-tab { font-size: 10px; padding: 3px 7px; }
 }
@@ -700,10 +704,10 @@ window.setSidebarCat = function(catKey) {
   renderSidebar();
   document.querySelectorAll('.sidebar-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat===activeCatFilter));
   document.querySelectorAll('.legend-item').forEach(t => t.classList.toggle('cat-active', t.dataset.cat===activeCatFilter));
-  // 모바일: 카테고리 선택 시 달력 아래 사이드바 body로 스크롤
-  if (window.innerWidth <= 768 && activeCatFilter) {
+  // 모바일: 카테고리 선택 시 사이드바 body 쪽으로 스크롤
+  if (window.innerWidth <= 1100 && activeCatFilter) {
     const body = document.getElementById("sidebarBody");
-    if (body) setTimeout(() => body.scrollIntoView({behavior:'smooth', block:'start'}), 100);
+    if (body) setTimeout(() => body.scrollIntoView({behavior:'smooth', block:'nearest'}), 150);
   }
 };
 
@@ -889,6 +893,15 @@ function renderCells() {
     }
     container.appendChild(cell);
   }
+  // 스와이프 애니메이션 (모바일)
+  if (swipeDir !== 0 && window.innerWidth <= 1100) {
+    const cal = document.querySelector('.calendar');
+    const cls = swipeDir > 0 ? 'slide-from-left' : 'slide-from-right';
+    cal.classList.remove('slide-from-left','slide-from-right');
+    void cal.offsetWidth; // reflow
+    cal.classList.add(cls);
+  }
+  swipeDir = 0;
   document.getElementById("legend").innerHTML=Object.entries(CATS).map(([k,c])=>
     `<span class="legend-item ${activeCatFilter===k?'cat-active':''}" data-cat="${k}" style="background:${c.light};color:${c.text}" onclick="setSidebarCat('${k}')" title="${c.label} 일정만 보기">● ${c.label}</span>`
   ).join("");
@@ -1099,7 +1112,10 @@ window.deleteCurrentEvent=async function(){
 };
 
 window.goToday=function(){currentYear=today.getFullYear();currentMonth=today.getMonth();renderAll();};
+let swipeDir = 0; // -1 = left(다음달), 1 = right(이전달)
+
 window.changeMonth=function(dir){
+  swipeDir = dir;
   if(currentView==="list"&&listMode==="year") currentYear+=dir;
   else{currentMonth+=dir;if(currentMonth<0){currentYear--;currentMonth=11;}if(currentMonth>11){currentYear++;currentMonth=0;}}
   renderAll();
@@ -1118,7 +1134,10 @@ initFirebase();
 (function(){
   let startX=0,startY=0;
   document.addEventListener("touchstart",e=>{startX=e.touches[0].clientX;startY=e.touches[0].clientY;},{passive:true});
-  document.addEventListener("touchend",e=>{const dx=e.changedTouches[0].clientX-startX,dy=e.changedTouches[0].clientY-startY;if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5)changeMonth(dx<0?1:-1);},{passive:true});
+  document.addEventListener("touchend",e=>{
+    const dx=e.changedTouches[0].clientX-startX, dy=e.changedTouches[0].clientY-startY;
+    if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5) changeMonth(dx<0?1:-1);
+  },{passive:true});
 })();
 </script>
 </body>

@@ -126,7 +126,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   header { padding: 0 14px; height: auto; padding-top:10px; padding-bottom:10px; flex-direction:column; gap:10px; align-items:flex-start;}
   .header-brand h1 { font-size: 15px; } .header-brand p { display: none; }
   .header-right { display: none; }
-  #mobileCatBar { display: flex !important; }
   main { padding: 14px 8px 32px; }
   .cal-nav-title h2 { font-size: 20px; }
   .cell { min-height: 60px; padding: 4px 2px; } .event-chip { font-size: 10px; padding: 3px 4px; margin-bottom: 2px; }
@@ -144,7 +143,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   <div class="logo">📅</div>
   <p id="loadingText">온메디칼 캘린더 불러오는 중...</p>
 </div>
-<div id="mobileCatBar" style="display:none;flex-wrap:wrap;gap:5px;padding:10px 14px;background:var(--navy2);"></div>
 <div id="toasts"></div>
 <header>
   <div class="header-brand">
@@ -747,15 +745,12 @@ function renderSidebar() {
 
 function buildSidebarCatTabs() {
   const tabs=document.getElementById("sidebarCatTabs");
-  const mobileTabs=document.getElementById("mobileCatBar");
   if (!tabs) return;
   const todayStr=toLocalISO(today);
-  const html=Object.entries(CATS).map(([k,c]) => {
+  tabs.innerHTML=Object.entries(CATS).map(([k,c]) => {
     const count=events.filter(e=>!e.isHoliday&&!e.isCompleted&&e.category===k&&e.date>=todayStr).length;
     return `<span class="sidebar-cat-tab ${activeCatFilter===k?'active':''}" data-cat="${k}" style="background:${c.bg}" onclick="setSidebarCat('${k}')" title="${c.label}">${c.icon} ${c.label}${count>0?` <span style="opacity:0.8;font-size:10px">${count}</span>`:''}</span>`;
   }).join("");
-  tabs.innerHTML=html;
-  if (mobileTabs) mobileTabs.innerHTML=html;
 }
 
 

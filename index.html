@@ -59,11 +59,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .day-num.is-today { background: var(--blue); color: #fff; font-weight: 900; }
 .day-num.is-sun { color: var(--red); }
 .day-num.is-sat { color: var(--blue); }
-.event-chip { border-radius: 5px; padding: 5px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+/* ⭐ 칩을 다시 얇고 깔끔한 한 줄 형태로 원상복구 */
+.event-chip { border-radius: 4px; padding: 3px 5px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 2px; cursor: pointer; display: flex; align-items: center; gap: 3px; width: 100%; max-width: 100%; transition: opacity 0.2s; }
 .event-chip:hover { filter: brightness(1.15); }
 .event-chip.completed { opacity: 0.65; }
 
-.chip-author { font-size: 10px; opacity: .8; flex-shrink: 0; }
+/* 등록자 이름 숨김 처리 */
+.chip-author { display: none; }
 .more-badge { font-size: 10px; color: var(--muted); padding-left: 3px; }
 .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .filter-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; transition: all .15s; }
@@ -73,7 +76,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .list-info { flex: 1; min-width: 0; }
 .list-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-meta { font-size: 12px; color: var(--slate); margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.author-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.author-dot { display: none; } /* 작성자 점 숨김 */
 .cat-pill { padding: 4px 11px; border-radius: 20px; font-size: 11px; font-weight: 800; }
 .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .legend-item { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
@@ -366,9 +369,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// ══════════════════════════════════════════════
-// 🔥 Firebase 설정
-// ══════════════════════════════════════════════
 const firebaseConfig = {
   apiKey: "AIzaSyCZEl1mfU-VqVfqAQ-LY6dOyPiGi6Z8sCY",
   authDomain: "calendar-6be41.firebaseapp.com",
@@ -597,7 +597,6 @@ window.handleExcelUpload = async function(event) {
                     for (let item in itemMap[orderNo]) {
                         parts.push(`${item}(${itemMap[orderNo][item].join(", ")})`);
                     }
-                    // ⭐ 엑셀에서 읽어올 때 내용물이 여러 개면 줄바꿈(\n)으로 합쳐서 저장!
                     formattedItems[orderNo] = parts.join("\n");
                 }
             }
@@ -1021,20 +1020,18 @@ function renderCells() {
       chip.style.background = CATS[ev.category]?.bg || "#94A3B8";
       if (ev.isCompleted) chip.classList.add("completed"); 
       
-      chip.title = `${ev.title} (${ev.author})\n${ev.items ? ev.items : ''}`;
+      chip.title = `${ev.title}\n${ev.items ? ev.items : ''}`;
       const iconStr = ev.isCompleted ? "✅ " : (ev.alarm && ev.time ? "🔔" : "");
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
       
-      // ⭐ 달력 칩 내에서 줄바꿈이 정상적으로 렌더링되도록 속성(white-space:pre-wrap) 추가 적용!
+      // ⭐ 달력 칸에서는 제목만 깔끔하게 보이고 내용물과 작성자는 없앴습니다!
       chip.innerHTML = `
-        <div style="display:flex; width:100%; align-items:flex-start; gap:4px;">
+        <div style="display:flex; width:100%; align-items:center; gap:4px;">
             <div style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">
                 ${iconStr}${repeatIcon}${timeStr}${ev.title}
             </div>
-            <span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px;flex-shrink:0;">${ev.author || ""}</span>
         </div>
-        ${ev.items ? `<div style="font-size:10.5px; font-weight:500; opacity:0.95; margin-top:3px; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; line-height:1.4; letter-spacing:-0.3px;">📦 ${ev.items}</div>` : ""}
       `;
       
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
@@ -1145,13 +1142,12 @@ function renderList() {
         dateBoxHtml = `<div style="font-size:11px;color:#94A3B8;font-weight:700">${["일","월","화","수","목","금","토"][dateObj.getDay()]}</div><div style="font-size:${listMode==="year"?"18px":"22px"};font-weight:900;color:${dateObj.getDay()===0?"#EF4444":dateObj.getDay()===6?"#3B82F6":"#1E293B"};line-height:1.1">${listMode==="year"?parseInt(ev.date.slice(5,7),10)+"/"+parseInt(ev.date.slice(8,10),10):parseInt(ev.date.slice(8,10),10)}</div>`;
     }
     
-    // ⭐ 목록 뷰에서도 줄바꿈이 정상적으로 렌더링되도록 수정!
     return `
       <div class="list-item" style="border-left:4px solid ${c.bg};opacity:${past||isComp?0.6:1}">
         <div style="text-align:center;min-width:48px;">${dateBoxHtml}</div>
         <div class="list-info">
           <div class="list-title">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
-          <div class="list-meta">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:flex;align-items:center;gap:4px"><span class="author-dot" style="background:${uc}"></span>${ev.author || "?"}</span>${ev.description ? `<span style="color:var(--muted)">${ev.description}</span>` : ""}</div>
+          <div class="list-meta">${ev.time ? `<span>${ev.time}</span>` : ''}${ev.description ? `<span style="color:var(--muted)">${ev.description}</span>` : ""}</div>
           ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:4px; line-height:1.4; white-space:pre-wrap;">📦 ${ev.items}</div>` : ""}
         </div>
         <span class="cat-pill" style="background:${c.light};color:${c.text}">${c.label}</span>
@@ -1291,12 +1287,11 @@ window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalTitle").textContent = `📅 ${dateStr.replace(/-/g,".")} 일정 (${dayEvs.length}개)`;
   document.getElementById("dayModalList").innerHTML = dayEvs.map(ev => {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
-    // ⭐ 상세 모달창에서도 줄바꿈이 정상적으로 렌더링되도록 수정!
     return `<div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${c.bg};display:flex;align-items:center;gap:10px; opacity:${ev.isCompleted ? 0.65 : 1}">
         <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:14px;">${ev.isCompleted?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
             ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:4px; line-height:1.4; white-space:pre-wrap;">📦 ${ev.items}</div>` : ""}
-            <div style="font-size:12px;color:#64748B;margin-top:4px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${userColor(ev.author||"?")}"></span><span>${ev.author || ""}</span></div>
+            <div style="font-size:12px;color:#64748B;margin-top:4px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}</div>
         </div>
         <span style="background:${c.light};color:${c.text};padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;flex-shrink:0">${c.label}</span>
         <button onclick="document.getElementById('dayOverlay').style.display='none';openEditModal(${JSON.stringify(ev).replace(/"/g,'&quot;')})" style="background:#E2E8F0;border:none;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0">수정</button></div>`;

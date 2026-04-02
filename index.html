@@ -59,14 +59,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .day-num.is-today { background: var(--blue); color: #fff; font-weight: 900; }
 .day-num.is-sun { color: var(--red); }
 .day-num.is-sat { color: var(--blue); }
-
-/* ⭐ 칩을 다시 얇고 깔끔한 한 줄 형태로 원상복구 */
-.event-chip { border-radius: 4px; padding: 3px 5px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 2px; cursor: pointer; display: flex; align-items: center; gap: 3px; width: 100%; max-width: 100%; transition: opacity 0.2s; }
+.event-chip { border-radius: 5px; padding: 5px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .event-chip:hover { filter: brightness(1.15); }
 .event-chip.completed { opacity: 0.65; }
 
-/* 등록자 이름 숨김 처리 */
-.chip-author { display: none; }
+.chip-author { font-size: 10px; opacity: .8; flex-shrink: 0; }
 .more-badge { font-size: 10px; color: var(--muted); padding-left: 3px; }
 .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .filter-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; transition: all .15s; }
@@ -76,7 +73,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .list-info { flex: 1; min-width: 0; }
 .list-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-meta { font-size: 12px; color: var(--slate); margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.author-dot { display: none; } /* 작성자 점 숨김 */
+.author-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .cat-pill { padding: 4px 11px; border-radius: 20px; font-size: 11px; font-weight: 800; }
 .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .legend-item { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
@@ -369,6 +366,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+// ══════════════════════════════════════════════
+// 🔥 Firebase 설정
+// ══════════════════════════════════════════════
 const firebaseConfig = {
   apiKey: "AIzaSyCZEl1mfU-VqVfqAQ-LY6dOyPiGi6Z8sCY",
   authDomain: "calendar-6be41.firebaseapp.com",
@@ -579,17 +579,26 @@ window.handleExcelUpload = async function(event) {
                 const summaryData = XLSX.utils.sheet_to_json(summarySheet, {header: "A", raw: true, defval: ""});
                 let itemMap = {};
                 
-                for (let i = 1; i < summaryData.length; i++) {
-                    let orderNo = String(summaryData[i]["D"] || "").trim();
-                    let item = String(summaryData[i]["E"] || "").trim();
+                let currentOrderNo = "";
+                let currentItem = "";
+
+                // ⭐ 엑셀 병합 셀 문제 해결: 0번째 줄부터 시작하고 빈칸은 알아서 위에서 끌어옴
+                for (let i = 0; i < summaryData.length; i++) {
+                    let orderVal = String(summaryData[i]["D"] || "").trim();
+                    let itemVal = String(summaryData[i]["E"] || "").trim();
                     let size = String(summaryData[i]["F"] || "").trim();
                     let qty = String(summaryData[i]["G"] || "").trim();
 
-                    if (!orderNo || !qty) continue; 
+                    // 병합된 셀 처리
+                    if (orderVal) currentOrderNo = orderVal;
+                    if (itemVal) currentItem = itemVal;
 
-                    if (!itemMap[orderNo]) itemMap[orderNo] = {};
-                    if (!itemMap[orderNo][item]) itemMap[orderNo][item] = [];
-                    itemMap[orderNo][item].push(`${size} ${qty}`);
+                    // 수량이 없거나 엑셀 헤더 행이면 스킵
+                    if (!currentOrderNo || !qty || qty === "수량" || qty === "G") continue; 
+
+                    if (!itemMap[currentOrderNo]) itemMap[currentOrderNo] = {};
+                    if (!itemMap[currentOrderNo][currentItem]) itemMap[currentOrderNo][currentItem] = [];
+                    itemMap[currentOrderNo][currentItem].push(`${size} ${qty}`);
                 }
 
                 for (let orderNo in itemMap) {
@@ -674,7 +683,9 @@ window.handleExcelUpload = async function(event) {
                 else if (p.title.includes("잔금") || p.title.includes("선수금") || p.title.includes("지급") || p.title.includes("송금") || p.title.includes("$")) category = "remittance";
 
                 let itemsText = "";
-                const orderMatch = p.title.match(/^([A-Za-z0-9]+)/);
+                // ⭐ [지연] 등의 글자가 있어도 핵심 발주번호를 무조건 찾아냄
+                let coreTitleForMatch = getCoreTitle(p.title);
+                const orderMatch = coreTitleForMatch.match(/^([A-Za-z0-9\-_]+)/);
                 if (orderMatch && formattedItems[orderMatch[1]]) {
                     itemsText = formattedItems[orderMatch[1]];
                 }
@@ -1025,7 +1036,6 @@ function renderCells() {
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
       
-      // ⭐ 달력 칸에서는 제목만 깔끔하게 보이고 내용물과 작성자는 없앴습니다!
       chip.innerHTML = `
         <div style="display:flex; width:100%; align-items:center; gap:4px;">
             <div style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">

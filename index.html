@@ -59,7 +59,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .day-num.is-today { background: var(--blue); color: #fff; font-weight: 900; }
 .day-num.is-sun { color: var(--red); }
 .day-num.is-sat { color: var(--blue); }
-.event-chip { border-radius: 5px; padding: 5px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.event-chip { border-radius: 5px; padding: 4px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 3px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .event-chip:hover { filter: brightness(1.15); }
 .event-chip.completed { opacity: 0.65; }
 
@@ -495,6 +495,7 @@ function getCoreTitle(t) {
     return t.replace(/^\[.*?\]\s*/g, '').trim();
 }
 
+// ⭐ 기존 일정도 똑똑하게 묶어주는 기능 강화
 window.mergeExistingEvents = async function() {
   if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 깔끔하게 정리합니다.\n(중복 데이터도 모두 삭제됩니다.) 진행하시겠습니까?")) return;
   document.getElementById("loadingScreen").style.display = "flex";
@@ -507,7 +508,10 @@ window.mergeExistingEvents = async function() {
       
       let groups = {};
       targets.forEach(ev => {
-          let key = ev.title + "|" + (ev.description || "");
+          let core = getCoreTitle(ev.title);
+          let match = core.match(/^([A-Za-z0-9\-_]+)/);
+          let order = match ? match[1] : core;
+          let key = order + "|" + ev.category + "|" + (ev.description || "");
           if(!groups[key]) groups[key] = [];
           groups[key].push(ev);
       });
@@ -574,6 +578,7 @@ window.handleExcelUpload = async function(event) {
             const workbook = XLSX.read(data, {type: 'array'});
             
             let formattedItems = {};
+            let firstItemMap = {}; // ⭐ 첫 번째 품목명 기억용 
             if (workbook.SheetNames.includes("정리")) {
                 const summarySheet = workbook.Sheets["정리"];
                 const summaryData = XLSX.utils.sheet_to_json(summarySheet, {header: "A", raw: true, defval: ""});
@@ -582,21 +587,21 @@ window.handleExcelUpload = async function(event) {
                 let currentOrderNo = "";
                 let currentItem = "";
 
-                // ⭐ 엑셀 병합 셀 문제 해결: 0번째 줄부터 시작하고 빈칸은 알아서 위에서 끌어옴
                 for (let i = 0; i < summaryData.length; i++) {
                     let orderVal = String(summaryData[i]["D"] || "").trim();
                     let itemVal = String(summaryData[i]["E"] || "").trim();
                     let size = String(summaryData[i]["F"] || "").trim();
                     let qty = String(summaryData[i]["G"] || "").trim();
 
-                    // 병합된 셀 처리
                     if (orderVal) currentOrderNo = orderVal;
                     if (itemVal) currentItem = itemVal;
 
-                    // 수량이 없거나 엑셀 헤더 행이면 스킵
                     if (!currentOrderNo || !qty || qty === "수량" || qty === "G") continue; 
 
-                    if (!itemMap[currentOrderNo]) itemMap[currentOrderNo] = {};
+                    if (!itemMap[currentOrderNo]) {
+                        itemMap[currentOrderNo] = {};
+                        firstItemMap[currentOrderNo] = currentItem; // ⭐ 처음 만난 품목 저장
+                    }
                     if (!itemMap[currentOrderNo][currentItem]) itemMap[currentOrderNo][currentItem] = [];
                     itemMap[currentOrderNo][currentItem].push(`${size} ${qty}`);
                 }
@@ -666,7 +671,7 @@ window.handleExcelUpload = async function(event) {
             let mergedEvents = [];
             for (let p of pendingEvents) {
                 let last = mergedEvents.length > 0 ? mergedEvents[mergedEvents.length - 1] : null;
-                if (last && last.title === p.title && last.description === p.memo) {
+                if (last && last.originalTitle === p.title && last.description === p.memo) {
                     let lastEndObj = new Date(last.endDate + "T00:00:00");
                     lastEndObj.setDate(lastEndObj.getDate() + 5);
                     let pStartObj = new Date(p.date + "T00:00:00");
@@ -683,15 +688,30 @@ window.handleExcelUpload = async function(event) {
                 else if (p.title.includes("잔금") || p.title.includes("선수금") || p.title.includes("지급") || p.title.includes("송금") || p.title.includes("$")) category = "remittance";
 
                 let itemsText = "";
-                // ⭐ [지연] 등의 글자가 있어도 핵심 발주번호를 무조건 찾아냄
                 let coreTitleForMatch = getCoreTitle(p.title);
                 const orderMatch = coreTitleForMatch.match(/^([A-Za-z0-9\-_]+)/);
-                if (orderMatch && formattedItems[orderMatch[1]]) {
-                    itemsText = formattedItems[orderMatch[1]];
+                
+                let newTitle = p.title;
+                let orderNo = "";
+
+                if (orderMatch) {
+                    orderNo = orderMatch[1];
+                    if (formattedItems[orderNo]) {
+                        itemsText = formattedItems[orderNo];
+                    }
+                    // ⭐ 제목에 첫 번째 품목명 자동 삽입 ("ST260101 입항" -> "ST260101 덴탈 입항")
+                    if (firstItemMap[orderNo]) {
+                        if (!newTitle.includes(firstItemMap[orderNo])) {
+                            newTitle = newTitle.replace(orderNo, orderNo + " " + firstItemMap[orderNo]);
+                        }
+                    }
                 }
 
                 mergedEvents.push({
-                    title: p.title, date: p.date, endDate: p.date, time: "", category: category, description: p.memo, 
+                    title: newTitle, 
+                    originalTitle: p.title, 
+                    orderNo: orderNo,
+                    date: p.date, endDate: p.date, time: "", category: category, description: p.memo, 
                     items: itemsText, 
                     alarm: false, alarmMinutes: 10, author: currentUser, repeatMaster: false, isCompleted: false
                 });
@@ -701,27 +721,57 @@ window.handleExcelUpload = async function(event) {
             let skipCount = 0;
             let updateCount = 0;
 
-            let addedCoreTitles = new Set();
+            let addedOrders = new Set();
 
             for (let m of mergedEvents) {
                 if (m.date === m.endDate) m.endDate = ""; 
                 
                 let mCore = getCoreTitle(m.title);
+                let uniqueKey = m.orderNo ? `${m.orderNo}_${m.category}_${m.date}` : `${mCore}_${m.date}`;
 
-                let existingEvent = events.find(ev => getCoreTitle(ev.title) === mCore && ev.date === m.date);
+                // ⭐ 기존 달력 스캔: 발주번호와 카테고리가 일치하면 같은 일정으로 간주
+                let existingEvent = events.find(ev => {
+                    if(ev.date !== m.date) return false;
+                    let evCore = getCoreTitle(ev.title);
+                    let evOrderMatch = evCore.match(/^([A-Za-z0-9\-_]+)/);
+                    let evOrder = evOrderMatch ? evOrderMatch[1] : null;
 
-                if (addedCoreTitles.has(mCore)) {
+                    if(evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) {
+                        return true;
+                    }
+                    return evCore === mCore; 
+                });
+
+                if (addedOrders.has(uniqueKey)) {
                     skipCount++;
                 } else if (existingEvent) {
                     skipCount++;
+                    let updates = {};
+                    let doUpdate = false;
+                    
+                    // 품목 정보가 추가되었으면 업데이트
                     if (m.items && existingEvent.items !== m.items) {
-                        await updateDoc(doc(db, "events", existingEvent.id), { items: m.items, updatedAt: serverTimestamp() });
+                        updates.items = m.items;
+                        doUpdate = true;
+                    }
+                    // 기존 일정 제목에 "덴탈" 같은 품목명이 없으면 제목도 업그레이드
+                    if (existingEvent.title !== m.title && !existingEvent.title.includes("[지연]")) {
+                        updates.title = m.title;
+                        doUpdate = true;
+                    }
+
+                    if (doUpdate) {
+                        updates.updatedAt = serverTimestamp();
+                        await updateDoc(doc(db, "events", existingEvent.id), updates);
                         updateCount++;
                     }
-                    addedCoreTitles.add(mCore);
+                    addedOrders.add(uniqueKey);
                 } else {
-                    await addDoc(eventsCol, { ...m, createdAt: serverTimestamp() });
-                    addedCoreTitles.add(mCore); 
+                    let docData = { ...m, createdAt: serverTimestamp() };
+                    delete docData.originalTitle;
+                    delete docData.orderNo;
+                    await addDoc(eventsCol, docData);
+                    addedOrders.add(uniqueKey); 
                     newCount++;
                 }
             }

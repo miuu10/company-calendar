@@ -53,7 +53,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .cell:hover { background: #F8FAFC; }
 .cell.today { background: #EFF6FF; }
 .cell.empty { cursor: default; background: #FAFAFA; }
-/* 드래그 오버 시 효과 */
 .cell.drag-over { background: #E2E8F0 !important; outline: 2px dashed var(--blue); outline-offset: -2px; }
 
 .day-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: var(--navy3); margin-bottom: 3px; }
@@ -72,7 +71,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .list-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); }
 .list-info { flex: 1; min-width: 0; }
 .list-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.list-meta { font-size: 12px; color: var(--slate); margin-top: 3px; display: flex; align-items: center; gap: 8px; }
+.list-meta { font-size: 12px; color: var(--slate); margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .author-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .cat-pill { padding: 4px 11px; border-radius: 20px; font-size: 11px; font-weight: 800; }
 .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
@@ -244,6 +243,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
     <div class="form-group">
       <label class="form-label">제목 *</label>
       <input class="form-input" id="fTitle" placeholder="일정 제목" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">📦 내용물 (품목 정보)</label>
+      <input class="form-input" id="fItems" placeholder="예: 덴탈 (S 2000, M 2800) / 니트릴 (L 1000)" style="background: #F8FAFC;" />
     </div>
 
     <div class="form-row2 form-group">
@@ -486,6 +490,10 @@ function initFirebase() {
   }
 }
 
+function getCoreTitle(t) {
+    return t.replace(/^\[.*?\]\s*/g, '').trim();
+}
+
 window.mergeExistingEvents = async function() {
   if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 깔끔하게 정리합니다.\n(중복 데이터도 모두 삭제됩니다.) 진행하시겠습니까?")) return;
   document.getElementById("loadingScreen").style.display = "flex";
@@ -563,8 +571,40 @@ window.handleExcelUpload = async function(event) {
         try {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {type: 'array'});
-            const sheetName = workbook.SheetNames.includes("일정관리") ? "일정관리" : workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
+            
+            // ⭐ 1. 정리 시트에서 내용물(품목 정보) 먼저 싹 읽어오기
+            let formattedItems = {};
+            if (workbook.SheetNames.includes("정리")) {
+                const summarySheet = workbook.Sheets["정리"];
+                const summaryData = XLSX.utils.sheet_to_json(summarySheet, {header: "A", raw: true, defval: ""});
+                let itemMap = {};
+                
+                for (let i = 1; i < summaryData.length; i++) {
+                    let orderNo = String(summaryData[i]["D"] || "").trim();
+                    let item = String(summaryData[i]["E"] || "").trim();
+                    let size = String(summaryData[i]["F"] || "").trim();
+                    let qty = String(summaryData[i]["G"] || "").trim();
+
+                    if (!orderNo || !qty) continue; 
+
+                    if (!itemMap[orderNo]) itemMap[orderNo] = {};
+                    if (!itemMap[orderNo][item]) itemMap[orderNo][item] = [];
+                    itemMap[orderNo][item].push(`${size} ${qty}`);
+                }
+
+                // 예: ST260101 -> 덴탈(S 2000, M 2800) / 니트릴(S 2300, M 2100)
+                for (let orderNo in itemMap) {
+                    let parts = [];
+                    for (let item in itemMap[orderNo]) {
+                        parts.push(`${item}(${itemMap[orderNo][item].join(", ")})`);
+                    }
+                    formattedItems[orderNo] = parts.join(" / ");
+                }
+            }
+
+            // ⭐ 2. 일정관리 시트 읽기
+            const calSheetName = workbook.SheetNames.includes("일정관리") ? "일정관리" : workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[calSheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: "A", raw: true, defval: ""});
 
             let pendingEvents = [];
@@ -628,6 +668,7 @@ window.handleExcelUpload = async function(event) {
                         continue;
                     }
                 }
+                
                 let category = "other";
                 if (p.title.includes("출항")) category = "departure";
                 else if (p.title.includes("입항")) category = "arrival";
@@ -635,27 +676,44 @@ window.handleExcelUpload = async function(event) {
                 else if (p.title.includes("생산완료")) category = "production";
                 else if (p.title.includes("잔금") || p.title.includes("선수금") || p.title.includes("지급") || p.title.includes("송금") || p.title.includes("$")) category = "remittance";
 
+                // ⭐ 3. 방금 추출한 제목에서 발주번호(ST260101)를 쏙 빼내서 내용물을 찾음
+                let itemsText = "";
+                const orderMatch = p.title.match(/^([A-Za-z0-9]+)/);
+                if (orderMatch && formattedItems[orderMatch[1]]) {
+                    itemsText = formattedItems[orderMatch[1]];
+                }
+
                 mergedEvents.push({
-                    title: p.title, date: p.date, endDate: p.date, time: "", category: category, description: p.memo,
+                    title: p.title, date: p.date, endDate: p.date, time: "", category: category, description: p.memo, 
+                    items: itemsText, // 찾은 품목 정보 넣기
                     alarm: false, alarmMinutes: 10, author: currentUser, repeatMaster: false, isCompleted: false
                 });
             }
 
             let newCount = 0;
             let skipCount = 0;
+            let updateCount = 0;
 
-            function getCoreTitle(t) {
-                return t.replace(/^\[.*?\]\s*/g, '').trim();
-            }
-            let addedCoreTitles = new Set(events.map(ev => getCoreTitle(ev.title)));
+            let addedCoreTitles = new Set();
 
             for (let m of mergedEvents) {
                 if (m.date === m.endDate) m.endDate = ""; 
                 
                 let mCore = getCoreTitle(m.title);
 
+                // ⭐ 4. 기존 달력에 같은 일정이 있다면 새로 만들지 말고 '내용물(items)'만 싹 업데이트!
+                let existingEvent = events.find(ev => getCoreTitle(ev.title) === mCore && ev.date === m.date);
+
                 if (addedCoreTitles.has(mCore)) {
                     skipCount++;
+                } else if (existingEvent) {
+                    skipCount++;
+                    // 기존 일정에 품목 정보가 비어있거나 다르면 덮어쓰기 업데이트
+                    if (m.items && existingEvent.items !== m.items) {
+                        await updateDoc(doc(db, "events", existingEvent.id), { items: m.items, updatedAt: serverTimestamp() });
+                        updateCount++;
+                    }
+                    addedCoreTitles.add(mCore);
                 } else {
                     await addDoc(eventsCol, { ...m, createdAt: serverTimestamp() });
                     addedCoreTitles.add(mCore); 
@@ -664,7 +722,7 @@ window.handleExcelUpload = async function(event) {
             }
 
             document.getElementById("loadingScreen").style.display = "none";
-            addToast(`✅ 엑셀 자동 병합 업로드 완료! (추가: ${newCount}개 / 중복 차단: ${skipCount}개)`, "success");
+            addToast(`✅ 엑셀 데이터 분석 완료! (새로추가: ${newCount}개 / 내용 업데이트: ${updateCount}개)`, "success");
             document.getElementById('excelUpload').value = '';
 
         } catch (error) {
@@ -929,7 +987,6 @@ function renderCells() {
     cell.className = "cell" + (isToday ? " today" : "");
     cell.onclick = () => dayEvs.length > 0 ? openDayModal(dateStr, dayEvs) : openAddModal(dateStr);
 
-    // ⭐ 드래그 앤 드롭: 놓는 영역(Target) 설정
     cell.ondragover = (e) => { e.preventDefault(); cell.classList.add("drag-over"); };
     cell.ondragleave = (e) => { cell.classList.remove("drag-over"); };
     cell.ondrop = (e) => {
@@ -977,7 +1034,6 @@ function renderCells() {
       chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
 
-      // ⭐ 드래그 앤 드롭: 칩을 드래그 가능하게 설정 (단, 반복 일정은 꼬임 방지를 위해 드래그 금지)
       if (!ev._virtual) {
           chip.draggable = true;
           chip.ondragstart = (e) => {
@@ -1016,7 +1072,6 @@ function renderCells() {
   document.getElementById("legend").innerHTML = Object.entries(CATS).map(([,c]) => `<span class="legend-item" style="background:${c.light};color:${c.text}">● ${c.label}</span>`).join("");
 }
 
-// ⭐ 드래그 앤 드롭 이동 처리 (기간 일정도 기간 유지하며 똑똑하게 이동!)
 window.moveEvent = async function(id, oldDateStr, newDateStr) {
     if (oldDateStr === newDateStr) return;
     const ev = events.find(e => e.id === id);
@@ -1091,6 +1146,7 @@ function renderList() {
         <div class="list-info">
           <div class="list-title">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div class="list-meta">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:flex;align-items:center;gap:4px"><span class="author-dot" style="background:${uc}"></span>${ev.author || "?"}</span>${ev.description ? `<span style="color:var(--muted)">${ev.description}</span>` : ""}</div>
+          ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:4px;">📦 ${ev.items}</div>` : ""}
         </div>
         <span class="cat-pill" style="background:${c.light};color:${c.text}">${c.label}</span>
         <button class="btn btn-ghost" style="flex:0;padding:6px 12px;font-size:12px" onclick='openEditModal(${JSON.stringify(ev).replace(/'/g,"&apos;")})'>수정</button>
@@ -1114,6 +1170,7 @@ window.openAddModal = function(dateStr) {
   editingId = null;
   document.getElementById("modalTitle").textContent = "➕ 일정 추가";
   document.getElementById("fTitle").value = "";
+  document.getElementById("fItems").value = "";
   document.getElementById("fDate").value = dateStr; 
   document.getElementById("fEndDate").value = ""; 
   document.getElementById("fEndDate").min = dateStr;   
@@ -1137,6 +1194,7 @@ window.openEditModal = function(ev) {
   editingId = ev.id; currentEditDate = ev.date;
   document.getElementById("modalTitle").textContent = "✏️ 일정 수정";
   document.getElementById("fTitle").value = ev.title;
+  document.getElementById("fItems").value = ev.items || "";
   document.getElementById("fDate").value = ev.origDate || ev.date; 
   
   let displayEndDate = ev.origEndDate || ev.endDate || "";
@@ -1228,7 +1286,11 @@ window.openDayModal = function(dateStr, dayEvs) {
   document.getElementById("dayModalList").innerHTML = dayEvs.map(ev => {
     const c = CATS[ev.category] || { bg: "#94A3B8", light: "#F1F5F9", text: "#475569", label: "기타" };
     return `<div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${c.bg};display:flex;align-items:center;gap:10px; opacity:${ev.isCompleted ? 0.65 : 1}">
-        <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;">${ev.isCompleted?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div><div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${userColor(ev.author||"?")}"></span><span>${ev.author || ""}</span></div></div>
+        <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px;">${ev.isCompleted?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
+            ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:2px;">📦 ${ev.items}</div>` : ""}
+            <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${userColor(ev.author||"?")}"></span><span>${ev.author || ""}</span></div>
+        </div>
         <span style="background:${c.light};color:${c.text};padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;flex-shrink:0">${c.label}</span>
         <button onclick="document.getElementById('dayOverlay').style.display='none';openEditModal(${JSON.stringify(ev).replace(/"/g,'&quot;')})" style="background:#E2E8F0;border:none;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0">수정</button></div>`;
   }).join("");
@@ -1272,16 +1334,30 @@ window.toggleRepeatUI = function() { const c = document.getElementById("fRepeat"
 window.toggleAlarmUI = function() { document.getElementById("alarmTimingRow").style.display = document.getElementById("fAlarm").checked ? "flex" : "none"; };
 
 window.saveEvent = async function() {
-  const title = document.getElementById("fTitle").value.trim(), date = document.getElementById("fDate").value;
+  const title = document.getElementById("fTitle").value.trim();
+  const date = document.getElementById("fDate").value;
   let endDate = document.getElementById("fEndDate").value;
   const time = document.getElementById("fTime").value || "";
+  const itemsText = document.getElementById("fItems").value.trim();
   
   if (!title || !date) { addToast("제목과 날짜를 입력해주세요.", "error"); return; }
   if (endDate && endDate < date) { addToast("종료 날짜는 시작 날짜 이후여야 합니다.", "error"); return; }
   
   if (endDate === date) endDate = "";
 
-  const data = { title, date, time, category: document.getElementById("fCategory").value, description: document.getElementById("fDesc").value, alarm: document.getElementById("fAlarm").checked, alarmMinutes: Number(document.getElementById("fAlarmMin").value), author: currentUser, updatedAt: serverTimestamp() };
+  const data = { 
+      title, 
+      date, 
+      time, 
+      category: document.getElementById("fCategory").value, 
+      description: document.getElementById("fDesc").value, 
+      items: itemsText,
+      alarm: document.getElementById("fAlarm").checked, 
+      alarmMinutes: Number(document.getElementById("fAlarmMin").value), 
+      author: currentUser, 
+      updatedAt: serverTimestamp() 
+  };
+  
   const isRepeat = document.getElementById("fRepeat").checked;
   
   if (isRepeat) {

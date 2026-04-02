@@ -84,9 +84,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
 .event-chip { border-radius: 5px; padding: 4px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 3px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .event-chip:hover { filter: brightness(1.15); }
 .event-chip.completed { opacity: 0.65; }
-.filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.filter-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; transition: all .15s; }
-.filter-chip.active { border-color: currentColor; }
+
 .list-item { background: var(--white); border-radius: 14px; padding: 16px 20px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.06); margin-bottom: 10px; transition: box-shadow .15s; }
 .list-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); }
 .list-info { flex: 1; min-width: 0; }
@@ -125,6 +123,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   .header-brand h1 { font-size: 15px; } .header-brand p { display: none; }
   .header-right { gap: 5px; width:100%; justify-content:space-between; }
   main { padding: 14px 8px 32px; } .cal-nav h2 { font-size: 20px; }
+  .cal-nav-title h2 { font-size: 20px; }
   .cell { min-height: 60px; padding: 4px 2px; } .event-chip { font-size: 10px; padding: 3px 4px; margin-bottom: 2px; }
   .modal { padding: 22px 18px; } .form-row2 { grid-template-columns: 1fr; }
   .filter-bar { gap: 5px; } .filter-chip { font-size: 11px; padding: 4px 10px; }
@@ -166,7 +165,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
       <p style="font-size:12px;color:#94A3B8;">📌 일정을 드래그해서 옮기거나, 빈칸을 클릭해 추가하세요!</p>
       <button onclick="goToday()" style="margin-top:6px;background:#EFF6FF;color:#3B82F6;border:1.5px solid #BFDBFE;border-radius:20px;padding:3px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button>
     </div>
-    <div class="filter-bar" id="filterBar"></div>
+
     <div class="cal-with-sidebar">
       <div class="cal-main">
         <div class="calendar">
@@ -673,18 +672,7 @@ window.syncHolidays = async function() {
   addToast(`✅ ${year}년 공휴일 ${newCount}개 자동 연동 완료!`, "success");
 };
 
-window.submitName = function() {
-  const name = document.getElementById("nameInput").value.trim();
-  if (!name) { document.getElementById("nameInput").style.borderColor="#EF4444"; return; }
-  currentUser=name; localStorage.setItem("calendarUser",name);
-  document.getElementById("userNameDisplay").textContent=name;
-  document.getElementById("nameModal").style.display="none";
-  startAlarmLoop(); addToast(`안녕하세요, ${name}님! 👋`,"success");
-};
-window.changeName = function() {
-  const name = prompt("새 이름을 입력하세요:", currentUser);
-  if (name&&name.trim()) { currentUser=name.trim(); localStorage.setItem("calendarUser",currentUser); document.getElementById("userNameDisplay").textContent=currentUser; addToast("이름이 변경되었습니다.","success"); }
-};
+// 이름 기능 제거됨
 
 function startAlarmLoop() { requestNotifPermission(); setInterval(checkAlarms,30000); checkAlarms(); }
 function checkAlarms() {
@@ -756,14 +744,7 @@ function buildSidebarCatTabs() {
   }).join("");
 }
 
-function buildFilterBar() {
-  const authors=[...new Set(events.map(e=>e.author))].filter(Boolean);
-  document.getElementById("filterBar").innerHTML =
-    `<span class="filter-chip ${activeFilter==="all"?"active":""}" style="background:#F1F5F9;color:var(--slate)" onclick="setFilter('all')">전체</span>` +
-    authors.map(a=>`<span class="filter-chip ${activeFilter===a?"active":""}" style="background:${userColor(a)}22;color:${userColor(a)}" onclick="setFilter('${a}')"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${userColor(a)};margin-right:4px"></span>${a}</span>`).join("");
-}
 
-window.setFilter = function(val) { activeFilter=val; renderAll(); };
 
 function filteredEvents(periodStart, periodEnd, isListView=false) {
   const base = activeFilter==="all" ? events : events.filter(e=>e.author===activeFilter);
@@ -823,8 +804,7 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
 }
 
 function renderAll() {
-  document.getElementById("monthTitle").textContent=`${currentYear}년 ${currentMonth+1}월`;
-  buildFilterBar(); renderCells(); renderList(); renderSidebar(); buildSidebarCatTabs();
+  document.getElementById("monthTitle").textContent=`${currentYear}년 ${currentMonth+1}월`; renderCells(); renderList(); renderSidebar(); buildSidebarCatTabs();
   const syncBtn=document.getElementById("syncHolidayBtn");
   if (syncBtn) {
     const hasHol=events.some(e=>e.isHoliday&&e.date.startsWith(currentYear.toString()));

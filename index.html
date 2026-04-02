@@ -717,6 +717,15 @@ window.handleExcelUpload = async function(event) {
                 let mCore = getCoreTitle(m.title);
                 let uniqueKey = m.orderNo ? `${m.orderNo}_${m.category}_${m.date}` : `${mCore}_${m.date}`;
                 let existingEvent = events.find(ev => {
+                    let evCore = getCoreTitle(ev.title);
+                    let evOrderMatch = evCore.match(/^([A-Za-z0-9\-_]+)/);
+                    let evOrder = evOrderMatch ? evOrderMatch[1] : null;
+    
+    // [지연] 일정은 날짜 무관하게 발주번호+카테고리로 매칭
+                    if (ev.title.includes("[지연]") && evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) {
+                        return true;
+                    }
+    
                     if(ev.date !== m.date) return false;
                     let evCore = getCoreTitle(ev.title);
                     let evOrderMatch = evCore.match(/^([A-Za-z0-9\-_]+)/);

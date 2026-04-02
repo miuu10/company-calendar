@@ -59,9 +59,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .day-num.is-today { background: var(--blue); color: #fff; font-weight: 900; }
 .day-num.is-sun { color: var(--red); }
 .day-num.is-sat { color: var(--blue); }
-.event-chip { border-radius: 5px; padding: 2px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 2px; cursor: pointer; display: flex; align-items: center; gap: 3px; width: 100%; max-width: 100%; transition: opacity 0.2s; }
+
+/* ⭐ 일정 칩을 세로로 길게 확장 가능하도록 수정 */
+.event-chip { border-radius: 5px; padding: 5px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .event-chip:hover { filter: brightness(1.15); }
 .event-chip.completed { opacity: 0.65; }
+
 .chip-author { font-size: 10px; opacity: .8; flex-shrink: 0; }
 .more-badge { font-size: 10px; color: var(--muted); padding-left: 3px; }
 .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -113,7 +116,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
   main { padding: 14px 8px 32px; }
   .cal-nav h2 { font-size: 20px; }
   .cell { min-height: 60px; padding: 4px 2px; }
-  .event-chip { font-size: 10px; padding: 1px 3px; margin-bottom: 1px; }
+  .event-chip { font-size: 10px; padding: 3px 4px; margin-bottom: 2px; }
   .chip-author { display: none; }
   .modal { padding: 22px 18px; }
   .form-row2 { grid-template-columns: 1fr; }
@@ -572,7 +575,6 @@ window.handleExcelUpload = async function(event) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {type: 'array'});
             
-            // ⭐ 1. 정리 시트에서 내용물(품목 정보) 먼저 싹 읽어오기
             let formattedItems = {};
             if (workbook.SheetNames.includes("정리")) {
                 const summarySheet = workbook.Sheets["정리"];
@@ -592,7 +594,6 @@ window.handleExcelUpload = async function(event) {
                     itemMap[orderNo][item].push(`${size} ${qty}`);
                 }
 
-                // 예: ST260101 -> 덴탈(S 2000, M 2800) / 니트릴(S 2300, M 2100)
                 for (let orderNo in itemMap) {
                     let parts = [];
                     for (let item in itemMap[orderNo]) {
@@ -602,7 +603,6 @@ window.handleExcelUpload = async function(event) {
                 }
             }
 
-            // ⭐ 2. 일정관리 시트 읽기
             const calSheetName = workbook.SheetNames.includes("일정관리") ? "일정관리" : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[calSheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: "A", raw: true, defval: ""});
@@ -676,7 +676,6 @@ window.handleExcelUpload = async function(event) {
                 else if (p.title.includes("생산완료")) category = "production";
                 else if (p.title.includes("잔금") || p.title.includes("선수금") || p.title.includes("지급") || p.title.includes("송금") || p.title.includes("$")) category = "remittance";
 
-                // ⭐ 3. 방금 추출한 제목에서 발주번호(ST260101)를 쏙 빼내서 내용물을 찾음
                 let itemsText = "";
                 const orderMatch = p.title.match(/^([A-Za-z0-9]+)/);
                 if (orderMatch && formattedItems[orderMatch[1]]) {
@@ -685,7 +684,7 @@ window.handleExcelUpload = async function(event) {
 
                 mergedEvents.push({
                     title: p.title, date: p.date, endDate: p.date, time: "", category: category, description: p.memo, 
-                    items: itemsText, // 찾은 품목 정보 넣기
+                    items: itemsText, 
                     alarm: false, alarmMinutes: 10, author: currentUser, repeatMaster: false, isCompleted: false
                 });
             }
@@ -701,14 +700,12 @@ window.handleExcelUpload = async function(event) {
                 
                 let mCore = getCoreTitle(m.title);
 
-                // ⭐ 4. 기존 달력에 같은 일정이 있다면 새로 만들지 말고 '내용물(items)'만 싹 업데이트!
                 let existingEvent = events.find(ev => getCoreTitle(ev.title) === mCore && ev.date === m.date);
 
                 if (addedCoreTitles.has(mCore)) {
                     skipCount++;
                 } else if (existingEvent) {
                     skipCount++;
-                    // 기존 일정에 품목 정보가 비어있거나 다르면 덮어쓰기 업데이트
                     if (m.items && existingEvent.items !== m.items) {
                         await updateDoc(doc(db, "events", existingEvent.id), { items: m.items, updatedAt: serverTimestamp() });
                         updateCount++;
@@ -1026,12 +1023,22 @@ function renderCells() {
       chip.style.background = CATS[ev.category]?.bg || "#94A3B8";
       if (ev.isCompleted) chip.classList.add("completed"); 
       
-      chip.title = `${ev.title} (${ev.author})`;
+      chip.title = `${ev.title} (${ev.author})\n${ev.items ? ev.items : ''}`;
       const iconStr = ev.isCompleted ? "✅ " : (ev.alarm && ev.time ? "🔔" : "");
       const repeatIcon = (!ev.isCompleted && ev.repeatGroupId) ? "🔁" : "";
       const timeStr = ev.time ? ev.time + ' ' : '';
       
-      chip.innerHTML = `<span style="flex-shrink:0">${iconStr}${repeatIcon}</span><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${timeStr}${ev.title}</span><span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px; flex-shrink:0;">${ev.author || ""}</span>`;
+      // ⭐ 칩 높이를 최대 5줄 분량까지 알아서 늘어나도록 구조/스타일 수정!
+      chip.innerHTML = `
+        <div style="display:flex; width:100%; align-items:flex-start; gap:4px;">
+            <div style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;">
+                ${iconStr}${repeatIcon}${timeStr}${ev.title}
+            </div>
+            <span class="chip-author" style="background:rgba(255,255,255,.25);border-radius:4px;padding:0 3px;flex-shrink:0;">${ev.author || ""}</span>
+        </div>
+        ${ev.items ? `<div style="font-size:10.5px; font-weight:500; opacity:0.95; margin-top:3px; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; white-space:normal; line-height:1.4; letter-spacing:-0.3px;">📦 ${ev.items}</div>` : ""}
+      `;
+      
       chip.onclick = e => { e.stopPropagation(); openEditModal(ev); };
 
       if (!ev._virtual) {
@@ -1146,7 +1153,7 @@ function renderList() {
         <div class="list-info">
           <div class="list-title">${isComp?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
           <div class="list-meta">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:flex;align-items:center;gap:4px"><span class="author-dot" style="background:${uc}"></span>${ev.author || "?"}</span>${ev.description ? `<span style="color:var(--muted)">${ev.description}</span>` : ""}</div>
-          ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:4px;">📦 ${ev.items}</div>` : ""}
+          ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:4px; line-height:1.4;">📦 ${ev.items}</div>` : ""}
         </div>
         <span class="cat-pill" style="background:${c.light};color:${c.text}">${c.label}</span>
         <button class="btn btn-ghost" style="flex:0;padding:6px 12px;font-size:12px" onclick='openEditModal(${JSON.stringify(ev).replace(/'/g,"&apos;")})'>수정</button>
@@ -1288,8 +1295,8 @@ window.openDayModal = function(dateStr, dayEvs) {
     return `<div style="background:#F8FAFC;border-radius:12px;padding:12px 14px;border-left:4px solid ${c.bg};display:flex;align-items:center;gap:10px; opacity:${ev.isCompleted ? 0.65 : 1}">
         <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:14px;">${ev.isCompleted?"✅ ":(ev.alarm && ev.time ?"🔔 ":"")}${ev.title}</div>
-            ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:2px;">📦 ${ev.items}</div>` : ""}
-            <div style="font-size:12px;color:#64748B;margin-top:2px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${userColor(ev.author||"?")}"></span><span>${ev.author || ""}</span></div>
+            ${ev.items ? `<div style="font-size:11px; font-weight:700; color:#0EA5E9; margin-top:4px; line-height:1.4;">📦 ${ev.items}</div>` : ""}
+            <div style="font-size:12px;color:#64748B;margin-top:4px;display:flex;align-items:center;gap:6px">${ev.time ? `<span>${ev.time}</span>` : ''}<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${userColor(ev.author||"?")}"></span><span>${ev.author || ""}</span></div>
         </div>
         <span style="background:${c.light};color:${c.text};padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;flex-shrink:0">${c.label}</span>
         <button onclick="document.getElementById('dayOverlay').style.display='none';openEditModal(${JSON.stringify(ev).replace(/"/g,'&quot;')})" style="background:#E2E8F0;border:none;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0">수정</button></div>`;

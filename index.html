@@ -145,6 +145,15 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   <div class="logo">📅</div>
   <p id="loadingText">온메디칼 캘린더 불러오는 중...</p>
 </div>
+<div class="name-modal-wrap" id="nameModal" style="display:none">
+  <div class="name-modal">
+    <div class="emoji">👋</div>
+    <h2>처음 오셨군요!</h2>
+    <p>캘린더에서 사용할 이름을 입력해주세요.<br>팀원들에게 표시됩니다.</p>
+    <input class="name-input" id="nameInput" placeholder="홍길동" maxlength="10" />
+    <button class="btn btn-primary" style="width:100%;margin-top:16px;padding:14px;font-size:16px" onclick="submitName()">시작하기</button>
+  </div>
+</div>
 <div id="toasts"></div>
 <header>
   <div class="header-brand">
@@ -559,9 +568,9 @@ window.handleExcelUpload = async function(event) {
       let pendingEvents = [];
       for (let i=1; i<jsonData.length; i++) {
         const row = jsonData[i];
-        let d1=parseExcelDate(row["J"]), t1=row["L"];
+        let d1=parseExcelDate(row["K"]), t1=row["M"];
         if (d1&&t1) { let ex=extractTitleAndMemo(t1); pendingEvents.push({date:d1,title:ex.cleanTitle,memo:ex.memoText,original:ex.originalTitle}); }
-        let d2=parseExcelDate(row["W"]), t2=row["X"];
+        let d2=parseExcelDate(row["X"]), t2=row["Y"];
         if (d2&&t2) { let ex=extractTitleAndMemo(t2); pendingEvents.push({date:d2,title:ex.cleanTitle,memo:ex.memoText,original:ex.originalTitle}); }
       }
       pendingEvents.sort((a,b) => { if(a.title!==b.title) return a.title.localeCompare(b.title); if(a.memo!==b.memo) return a.memo.localeCompare(b.memo); return a.date.localeCompare(b.date); });
@@ -598,18 +607,15 @@ window.handleExcelUpload = async function(event) {
         let mCore = getCoreTitle(m.title);
         let uniqueKey = m.orderNo ? `${m.orderNo}_${m.category}_${m.date}` : `${mCore}_${m.date}`;
 
-        // ⭐ 핵심 수정: [지연] 일정은 날짜 무관하게 발주번호+카테고리로 매칭
         let existingEvent = events.find(ev => {
           let evCore = getCoreTitle(ev.title);
           let evOrderMatch = evCore.match(/^([A-Za-z0-9\-_]+)/);
           let evOrder = evOrderMatch ? evOrderMatch[1] : null;
 
-          // [지연] 태그 달린 일정 → 날짜 달라도 발주번호+카테고리 일치하면 같은 일정으로 인식
           if (ev.title.includes("[지연]") && evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) {
             return true;
           }
 
-          // 일반 일정 → 날짜까지 일치해야 함
           if (ev.date !== m.date) return false;
           if (evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) return true;
           return evCore === mCore;
@@ -621,7 +627,6 @@ window.handleExcelUpload = async function(event) {
           skipCount++;
           let updates = {}, doUpdate = false;
           if (m.items && existingEvent.items !== m.items) { updates.items=m.items; doUpdate=true; }
-          // [지연] 태그 있는 제목은 덮어쓰지 않음
           if (existingEvent.title !== m.title && !existingEvent.title.includes("[지연]")) { updates.title=m.title; doUpdate=true; }
           if (doUpdate) { updates.updatedAt=serverTimestamp(); await updateDoc(doc(db,"events",existingEvent.id),updates); updateCount++; }
           addedOrders.add(uniqueKey);
@@ -678,8 +683,6 @@ window.syncHolidays = async function() {
   addToast(`✅ ${year}년 공휴일 ${newCount}개 자동 연동 완료!`, "success");
 };
 
-// 이름 기능 제거됨
-
 function startAlarmLoop() { requestNotifPermission(); setInterval(checkAlarms,30000); checkAlarms(); }
 function checkAlarms() {
   const now=new Date();
@@ -701,10 +704,7 @@ function requestNotifPermission() { if("Notification"in window&&Notification.per
 
 window.setSidebarCat = function(catKey) {
   activeCatFilter = activeCatFilter===catKey ? null : catKey;
-  renderSidebar();
-  document.querySelectorAll('.sidebar-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat===activeCatFilter));
-  document.querySelectorAll('.legend-item').forEach(t => t.classList.toggle('cat-active', t.dataset.cat===activeCatFilter));
-  // 모바일: 카테고리 선택 시 사이드바 body 쪽으로 스크롤
+  renderAll();
   if (window.innerWidth <= 1100 && activeCatFilter) {
     const body = document.getElementById("sidebarBody");
     if (body) setTimeout(() => body.scrollIntoView({behavior:'smooth', block:'nearest'}), 150);
@@ -755,10 +755,11 @@ function buildSidebarCatTabs() {
   }).join("");
 }
 
-
-
 function filteredEvents(periodStart, periodEnd, isListView=false) {
-  const base = activeFilter==="all" ? events : events.filter(e=>e.author===activeFilter);
+  let base = activeFilter==="all" ? events : events.filter(e=>e.author===activeFilter);
+  if (activeCatFilter) {
+      base = base.filter(e => e.isHoliday || e.category === activeCatFilter);
+  }
   const expanded=[];
   base.forEach(ev => {
     if (ev.isHoliday) return;
@@ -815,7 +816,8 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
 }
 
 function renderAll() {
-  document.getElementById("monthTitle").textContent=`${currentYear}년 ${currentMonth+1}월`; renderCells(); renderList(); renderSidebar(); buildSidebarCatTabs();
+  document.getElementById("monthTitle").textContent=`${currentYear}년 ${currentMonth+1}월`; 
+  renderCells(); renderList(); renderSidebar(); buildSidebarCatTabs();
   const syncBtn=document.getElementById("syncHolidayBtn");
   if (syncBtn) {
     const hasHol=events.some(e=>e.isHoliday&&e.date.startsWith(currentYear.toString()));
@@ -890,17 +892,9 @@ function renderCells() {
     }
     container.appendChild(cell);
   }
-  // 스와이프 애니메이션 (모바일)
-  if (swipeDir !== 0 && window.innerWidth <= 1100) {
-    const cal = document.querySelector('.calendar');
-    const cls = swipeDir > 0 ? 'slide-from-left' : 'slide-from-right';
-    cal.classList.remove('slide-from-left','slide-from-right');
-    void cal.offsetWidth; // reflow
-    cal.classList.add(cls);
-  }
-  swipeDir = 0;
+  let swipeDir = 0; 
   document.getElementById("legend").innerHTML=Object.entries(CATS).map(([k,c])=>
-    `<span class="legend-item ${activeCatFilter===k?'cat-active':''}" data-cat="${k}" style="background:${c.light};color:${c.text}" onclick="setSidebarCat('${k}')" title="${c.label} 일정만 보기">● ${c.label}</span>`
+    `<span class="legend-item ${activeCatFilter===k?'cat-active':''}" data-cat="${k}" style="color:${c.text}; background:${activeCatFilter === k ? c.light : '#F1F5F9'}; border-color:${activeCatFilter === k ? c.text : 'transparent'}" onclick="setSidebarCat('${k}')" title="${c.label} 일정만 보기">● ${c.label}</span>`
   ).join("");
 }
 
@@ -1109,10 +1103,7 @@ window.deleteCurrentEvent=async function(){
 };
 
 window.goToday=function(){currentYear=today.getFullYear();currentMonth=today.getMonth();renderAll();};
-let swipeDir = 0; // -1 = left(다음달), 1 = right(이전달)
-
 window.changeMonth=function(dir){
-  swipeDir = dir;
   if(currentView==="list"&&listMode==="year") currentYear+=dir;
   else{currentMonth+=dir;if(currentMonth<0){currentYear--;currentMonth=11;}if(currentMonth>11){currentYear++;currentMonth=0;}}
   renderAll();
@@ -1139,3 +1130,5 @@ initFirebase();
 </script>
 </body>
 </html>
+
+기억해주게

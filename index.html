@@ -84,7 +84,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
 .event-chip { border-radius: 5px; padding: 4px 6px; font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 3px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; max-width: 100%; transition: opacity 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .event-chip:hover { filter: brightness(1.15); }
 .event-chip.completed { opacity: 0.65; }
-
 .list-item { background: var(--white); border-radius: 14px; padding: 16px 20px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.06); margin-bottom: 10px; transition: box-shadow .15s; }
 .list-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); }
 .list-info { flex: 1; min-width: 0; }
@@ -95,8 +94,9 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
 .loading-screen .logo { font-size: 48px; animation: pulse 1.2s ease-in-out infinite; }
 .loading-screen p { color: var(--muted); font-size: 14px; text-align: center; line-height: 1.5; }
 @keyframes pulse { 0%,100% { transform: scale(1); opacity: .8; } 50% { transform: scale(1.1); opacity: 1; } }
-.cal-nav-title { display: flex; align-items: center; gap: 10px; justify-content: center; }
-.cal-nav-title h2 { font-size: 26px; font-weight: 900; letter-spacing: -1px; color: var(--navy); }
+.cal-nav-title { display: flex; align-items: center; gap: 10px; justify-content: center; position: relative; }
+.cal-nav-title h2 { font-size: 26px; font-weight: 900; letter-spacing: -1px; color: var(--navy); cursor: pointer; padding: 4px 14px; border-radius: 12px; transition: background .15s; }
+.cal-nav-title h2:hover { background: #EFF6FF; }
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
 .modal { background: var(--white); border-radius: 22px; padding: 32px; width: 100%; max-width: 460px; box-shadow: 0 24px 60px rgba(0,0,0,.2); max-height: 90vh; overflow-y: auto; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -117,6 +117,65 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
 @keyframes slideFromLeft  { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 .slide-from-right { animation: slideFromRight 0.22s ease; }
 .slide-from-left  { animation: slideFromLeft  0.22s ease; }
+
+/* ── 년/월 선택 팝업 ── */
+.mp-popup {
+  position: fixed;
+  z-index: 2000;
+  background: var(--white);
+  border-radius: 18px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.22);
+  padding: 20px;
+  width: 280px;
+  user-select: none;
+  animation: mpFadeIn .15s ease;
+}
+@keyframes mpFadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+.mp-year-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.mp-year-nav h4 { font-size: 18px; font-weight: 900; color: var(--navy); }
+.mp-year-btn {
+  background: var(--bg);
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--slate);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s;
+}
+.mp-year-btn:hover { background: var(--border); }
+.mp-months {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.mp-month {
+  padding: 10px 4px;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--navy3);
+  background: var(--bg);
+  border: none;
+  font-family: inherit;
+  transition: all .12s;
+}
+.mp-month:hover { background: #DBEAFE; color: var(--blue); }
+.mp-month.mp-current { background: var(--blue); color: #fff; }
+.mp-month.mp-today { border: 2px solid var(--blue); color: var(--blue); background: #EFF6FF; }
+.mp-month.mp-current.mp-today { background: var(--blue); color: #fff; border-color: transparent; }
+
 @media (max-width: 1100px) {
   .cal-with-sidebar { flex-direction: column; }
   .sidebar { width: 100%; position: static; order: -1; }
@@ -136,6 +195,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   .sidebar-cat-tab { font-size: 10px; padding: 3px 7px; }
   .sidebar-empty { padding: 16px 20px; font-size: 12px; }
   .sidebar-empty .big-icon { font-size: 22px; margin-bottom: 5px; }
+  .mp-popup { width: 240px; }
+  .mp-month { font-size: 12px; padding: 8px 2px; }
 }
 </style>
 </head>
@@ -163,7 +224,20 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
     <div class="cal-nav">
       <div class="cal-nav-title">
         <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
-        <h2 id="monthTitle"></h2>
+
+        <!-- 클릭하면 년/월 선택 팝업 열림 -->
+        <h2 id="monthTitle" onclick="toggleMonthPicker(event)" title="클릭하여 년/월 선택"></h2>
+
+        <!-- 년/월 선택 팝업 -->
+        <div id="mpPopup" style="display:none" class="mp-popup" onclick="event.stopPropagation()">
+          <div class="mp-year-nav">
+            <button class="mp-year-btn" onclick="mpChangeYear(-1)">‹</button>
+            <h4 id="mpYear"></h4>
+            <button class="mp-year-btn" onclick="mpChangeYear(1)">›</button>
+          </div>
+          <div class="mp-months" id="mpMonths"></div>
+        </div>
+
         <button class="btn-arrow" onclick="changeMonth(1)">›</button>
       </div>
     </div>
@@ -202,7 +276,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
     <div class="cal-nav">
       <div class="cal-nav-title">
         <button class="btn-arrow" onclick="changeMonth(-1)">‹</button>
-        <h2 id="listMonthTitle" style="font-size:22px;"></h2>
+        <h2 id="listMonthTitle" style="font-size:22px;cursor:default;"></h2>
         <button class="btn-arrow" onclick="changeMonth(1)">›</button>
       </div>
     </div>
@@ -437,6 +511,58 @@ let activeFilter = "all", activeCatFilter = null;
 let firedAlarms = JSON.parse(localStorage.getItem("firedAlarms") || "{}");
 const today = new Date();
 
+// ── 년/월 선택 팝업 ──
+let mpPickYear = new Date().getFullYear();
+
+window.toggleMonthPicker = function(e) {
+  e.stopPropagation();
+  const popup = document.getElementById("mpPopup");
+  if (popup.style.display !== "none") { popup.style.display = "none"; return; }
+  mpPickYear = currentYear;
+  renderMpPopup();
+  const titleEl = document.getElementById("monthTitle");
+  const rect = titleEl.getBoundingClientRect();
+  const popupW = 280;
+  let left = rect.left + rect.width / 2 - popupW / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+  let top = rect.bottom + 8 + window.scrollY;
+  popup.style.top = top + "px";
+  popup.style.left = left + "px";
+  popup.style.display = "block";
+};
+
+window.mpChangeYear = function(dir) {
+  mpPickYear += dir;
+  renderMpPopup();
+};
+
+function renderMpPopup() {
+  document.getElementById("mpYear").textContent = mpPickYear + "년";
+  const nowM = new Date().getMonth(), nowY = new Date().getFullYear();
+  const monthNames = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+  document.getElementById("mpMonths").innerHTML = monthNames.map((m, i) => {
+    const isCurrent = mpPickYear === currentYear && i === currentMonth;
+    const isThisMonth = mpPickYear === nowY && i === nowM;
+    let cls = "mp-month";
+    if (isCurrent) cls += " mp-current";
+    else if (isThisMonth) cls += " mp-today";
+    return `<button class="${cls}" onclick="mpSelect(${i})">${m}</button>`;
+  }).join("");
+}
+
+window.mpSelect = function(monthIdx) {
+  currentYear = mpPickYear;
+  currentMonth = monthIdx;
+  document.getElementById("mpPopup").style.display = "none";
+  renderAll();
+};
+
+document.addEventListener("click", () => {
+  const popup = document.getElementById("mpPopup");
+  if (popup) popup.style.display = "none";
+});
+// ── 팝업 끝 ──
+
 function initFirebase() {
   try {
     app = initializeApp(firebaseConfig);
@@ -598,18 +724,11 @@ window.handleExcelUpload = async function(event) {
         let mCore = getCoreTitle(m.title);
         let uniqueKey = m.orderNo ? `${m.orderNo}_${m.category}_${m.date}` : `${mCore}_${m.date}`;
 
-        // ⭐ 핵심 수정: [지연] 일정은 날짜 무관하게 발주번호+카테고리로 매칭
         let existingEvent = events.find(ev => {
           let evCore = getCoreTitle(ev.title);
           let evOrderMatch = evCore.match(/^([A-Za-z0-9\-_]+)/);
           let evOrder = evOrderMatch ? evOrderMatch[1] : null;
-
-          // [지연] 태그 달린 일정 → 날짜 달라도 발주번호+카테고리 일치하면 같은 일정으로 인식
-          if (ev.title.includes("[지연]") && evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) {
-            return true;
-          }
-
-          // 일반 일정 → 날짜까지 일치해야 함
+          if (ev.title.includes("[지연]") && evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) return true;
           if (ev.date !== m.date) return false;
           if (evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) return true;
           return evCore === mCore;
@@ -621,7 +740,6 @@ window.handleExcelUpload = async function(event) {
           skipCount++;
           let updates = {}, doUpdate = false;
           if (m.items && existingEvent.items !== m.items) { updates.items=m.items; doUpdate=true; }
-          // [지연] 태그 있는 제목은 덮어쓰지 않음
           if (existingEvent.title !== m.title && !existingEvent.title.includes("[지연]")) { updates.title=m.title; doUpdate=true; }
           if (doUpdate) { updates.updatedAt=serverTimestamp(); await updateDoc(doc(db,"events",existingEvent.id),updates); updateCount++; }
           addedOrders.add(uniqueKey);
@@ -678,8 +796,6 @@ window.syncHolidays = async function() {
   addToast(`✅ ${year}년 공휴일 ${newCount}개 자동 연동 완료!`, "success");
 };
 
-// 이름 기능 제거됨
-
 function startAlarmLoop() { requestNotifPermission(); setInterval(checkAlarms,30000); checkAlarms(); }
 function checkAlarms() {
   const now=new Date();
@@ -704,7 +820,6 @@ window.setSidebarCat = function(catKey) {
   renderSidebar();
   document.querySelectorAll('.sidebar-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat===activeCatFilter));
   document.querySelectorAll('.legend-item').forEach(t => t.classList.toggle('cat-active', t.dataset.cat===activeCatFilter));
-  // 모바일: 카테고리 선택 시 사이드바 body 쪽으로 스크롤
   if (window.innerWidth <= 1100 && activeCatFilter) {
     const body = document.getElementById("sidebarBody");
     if (body) setTimeout(() => body.scrollIntoView({behavior:'smooth', block:'nearest'}), 150);
@@ -754,8 +869,6 @@ function buildSidebarCatTabs() {
     return `<span class="sidebar-cat-tab ${activeCatFilter===k?'active':''}" data-cat="${k}" style="background:${c.bg}" onclick="setSidebarCat('${k}')" title="${c.label}">${c.icon} ${c.label}${count>0?` <span style="opacity:0.8;font-size:10px">${count}</span>`:''}</span>`;
   }).join("");
 }
-
-
 
 function filteredEvents(periodStart, periodEnd, isListView=false) {
   const base = activeFilter==="all" ? events : events.filter(e=>e.author===activeFilter);
@@ -815,7 +928,8 @@ function expandRepeatForMonth(ev, periodStart, periodEnd) {
 }
 
 function renderAll() {
-  document.getElementById("monthTitle").textContent=`${currentYear}년 ${currentMonth+1}월`; renderCells(); renderList(); renderSidebar(); buildSidebarCatTabs();
+  document.getElementById("monthTitle").textContent=`${currentYear}년 ${currentMonth+1}월`;
+  renderCells(); renderList(); renderSidebar(); buildSidebarCatTabs();
   const syncBtn=document.getElementById("syncHolidayBtn");
   if (syncBtn) {
     const hasHol=events.some(e=>e.isHoliday&&e.date.startsWith(currentYear.toString()));
@@ -890,12 +1004,11 @@ function renderCells() {
     }
     container.appendChild(cell);
   }
-  // 스와이프 애니메이션 (모바일)
   if (swipeDir !== 0 && window.innerWidth <= 1100) {
     const cal = document.querySelector('.calendar');
     const cls = swipeDir > 0 ? 'slide-from-left' : 'slide-from-right';
     cal.classList.remove('slide-from-left','slide-from-right');
-    void cal.offsetWidth; // reflow
+    void cal.offsetWidth;
     cal.classList.add(cls);
   }
   swipeDir = 0;
@@ -1109,7 +1222,7 @@ window.deleteCurrentEvent=async function(){
 };
 
 window.goToday=function(){currentYear=today.getFullYear();currentMonth=today.getMonth();renderAll();};
-let swipeDir = 0; // -1 = left(다음달), 1 = right(이전달)
+let swipeDir = 0;
 
 window.changeMonth=function(dir){
   swipeDir = dir;

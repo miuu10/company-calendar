@@ -838,7 +838,7 @@ function renderSidebar() {
     const dayColor=isToday?"#3B82F6":isSun?"#EF4444":isSat?"#3B82F6":"#0F172A";
     let dateLabel="";
     if (ev.endDate&&ev.endDate>ev.date) { const e2=new Date(ev.endDate+"T00:00:00"); dateLabel=month+"/"+day+" ~ "+(e2.getMonth()+1)+"/"+e2.getDate(); }
-    return '<div class="sidebar-event-card '+(isToday?'today-card':'')+'" onclick='openEditModal('+JSON.stringify(ev).replace(/'/g,"&apos;")+')'>'+
+    return '<div class="sidebar-event-card '+(isToday?'today-card':'')+'" onclick="openEditModal('+JSON.stringify(ev).replace(/"/g,'&quot;')+')">'+
       '<div class="sidebar-date-box"><div class="s-month" style="color:'+dayColor+'">'+month+'월</div><div class="s-day" style="color:'+dayColor+'">'+day+'</div><div class="s-dow" style="color:'+dayColor+'">'+dow+(isToday?' ●':'')+'</div></div>'+
       '<div class="sidebar-dot" style="background:'+cat.bg+'"></div>'+
       '<div class="sidebar-info"><div class="sidebar-title">'+(ev.alarm&&ev.time?'🔔 ':'')+ev.title+'</div>'+
@@ -1055,7 +1055,7 @@ function renderList() {
       '<div class="list-meta">'+(ev.time?'<span>'+ev.time+'</span>':'')+(ev.description?' <span style="color:var(--muted)">'+ev.description+'</span>':'')+'</div>'+
       (ev.items?'<div style="font-size:11px;font-weight:700;color:#0EA5E9;margin-top:4px;line-height:1.4;white-space:pre-wrap;">📦 '+ev.items+'</div>':'')+
       '</div><span class="cat-pill" style="background:'+c.light+';color:'+c.text+'">'+c.label+'</span>'+
-      '<button class="btn btn-ghost" style="flex:0;padding:6px 12px;font-size:12px" onclick='openEditModal('+JSON.stringify(ev).replace(/'/g,"&apos;")+')'>수정</button></div>';
+      '<button class="btn btn-ghost" style="flex:0;padding:6px 12px;font-size:12px" onclick="openEditModal('+JSON.stringify(ev).replace(/"/g,'&quot;')+')">수정</button></div>';
   }).join("");
 }
 

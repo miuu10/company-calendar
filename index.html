@@ -478,11 +478,11 @@ function isWorkingDay(dateStr, category) {
 
 const CATS = {
   remittance: { bg:"#10B981", light:"#ECFDF5", text:"#047857", label:"송금", icon:"💸" },
-  departure:  { bg:"#DB2777", light:"#FDF2F8", text:"#BE185D", label:"출항", icon:"🚢" },
+  departure:  { bg:"#EAB308", light:"#FEFCE8", text:"#A16207", label:"출항", icon:"🚢" },
   arrival:    { bg:"#0EA5E9", light:"#F0F9FF", text:"#0369A1", label:"입항", icon:"⚓" },
-  container:  { bg:"#0D9488", light:"#F0FDFA", text:"#0F766E", label:"컨테이너입고", icon:"📦" },
+  container:  { bg:"#EF4444", light:"#FEF2F2", text:"#B91C1C", label:"컨테이너입고", icon:"📦" },
   gmp:        { bg:"#8B5CF6", light:"#F5F3FF", text:"#6D28D9", label:"GMP", icon:"🔬" },
-  production: { bg:"#EAB308", light:"#FEF9C3", text:"#A16207", label:"생산완료", icon:"🏭" },
+  production: { bg:"#0D9488", light:"#F0FDFA", text:"#0F766E", label:"생산완료", icon:"🏭" },
   biz_trip:   { bg:"#F97316", light:"#FFF7ED", text:"#C2410C", label:"출장", icon:"💼" },
   vacation:   { bg:"#F59E0B", light:"#FFFBEB", text:"#B45309", label:"휴가", icon:"🟡" },
   other:      { bg:"#64748B", light:"#F1F5F9", text:"#475569", label:"기타", icon:"⚪" },
@@ -594,8 +594,28 @@ window.mergeExistingEvents = async function() {
       }
       if (currentEnd !== (currentBase.endDate || currentBase.date)) { await updateDoc(doc(db,"events",currentBase.id),{endDate:currentEnd}); updateCount++; }
     }
+    // ── 선수금/잔금 제목 앞으로 정리 ──
+    let titleFixCount = 0;
+    const remitKws = ["선수금","잔금"];
+    const snapAll = await getDocs(eventsCol);
+    for (const docSnap of snapAll.docs) {
+      const ev = docSnap.data();
+      if (ev.isHoliday || ev.category !== "remittance") continue;
+      let t = ev.title || "";
+      let fixed = t;
+      for (const kw of remitKws) {
+        if (t.includes(kw) && !t.startsWith(kw)) {
+          fixed = kw + " " + t.replace(kw,"").trim().replace(/\s+/g," ");
+          break;
+        }
+      }
+      if (fixed !== t) {
+        await updateDoc(doc(db,"events",docSnap.id),{title:fixed});
+        titleFixCount++;
+      }
+    }
     document.getElementById("loadingScreen").style.display = "none";
-    addToast("✅ 캘린더 정리 완료! (중복제거: " + deleteCount + "건 / 묶인그룹: " + updateCount + "건)", "success");
+    addToast("✅ 캘린더 정리 완료! (중복제거: " + deleteCount + "건 / 묶인그룹: " + updateCount + "건 / 제목정리: " + titleFixCount + "건)", "success");
   } catch(e) {
     console.error(e);
     document.getElementById("loadingScreen").style.display = "none";
@@ -671,11 +691,12 @@ window.handleExcelUpload = async function(event) {
           if (new Date(p.date+"T00:00:00")<=lastEndObj) { if(p.date>last.endDate) last.endDate=p.date; continue; }
         }
         let category = "other";
-        if (p.title.includes("출항")) category="departure";
-        else if (p.title.includes("입항")) category="arrival";
-        else if (p.title.includes("입고")) category="container";
-        else if (p.title.includes("생산완료")) category="production";
+        if (p.title.includes("GMP")||p.title.includes("gmp")) category="gmp";
         else if (p.title.includes("잔금")||p.title.includes("선수금")||p.title.includes("지급")||p.title.includes("송금")||p.title.includes("$")) category="remittance";
+        else if (p.title.includes("입고")) category="container";
+        else if (p.title.includes("입항")) category="arrival";
+        else if (p.title.includes("출항")) category="departure";
+        else if (p.title.includes("생산완료")) category="production";
         let itemsText="", newTitle=p.title, orderNo="";
         const orderMatch = getCoreTitle(p.title).match(/^([A-Za-z0-9\-_]+)/);
         if (orderMatch) {

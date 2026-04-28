@@ -855,7 +855,7 @@ function buildSidebarCatTabs() {
   const todayStr=toLocalISO(today);
   tabs.innerHTML=Object.entries(CATS).map(([k,c]) => {
     const count=events.filter(e=>!e.isHoliday&&!e.isCompleted&&e.category===k&&e.date>=todayStr).length;
-    return '<span class="sidebar-cat-tab '+(activeCatFilter===k?'active':'')+'" data-cat="'+k+'" style="background:'+c.bg+'" onclick="setSidebarCat(''+k+'')" title="'+c.label+'">'+c.icon+' '+c.label+(count>0?' <span style="opacity:0.8;font-size:10px">'+count+'</span>':'')+'</span>';
+    return '<span class="sidebar-cat-tab '+(activeCatFilter===k?'active':'')+'" data-cat="'+k+'" style="background:'+c.bg+'" onclick="setSidebarCat(\''+k+'\')" title="'+c.label+'">'+c.icon+' '+c.label+(count>0?' <span style="opacity:0.8;font-size:10px">'+count+'</span>':'')+'</span>';
   }).join("");
 }
 
@@ -1005,7 +1005,7 @@ function renderCells() {
   }
   swipeDir = 0;
   document.getElementById("legend").innerHTML=Object.entries(CATS).map(([k,c])=>
-    '<span class="legend-item '+(activeCatFilter===k?'cat-active':'')+'" data-cat="'+k+'" style="background:'+c.light+';color:'+c.text+'" onclick="setSidebarCat(''+k+'')" title="'+c.label+' 일정만 보기">● '+c.label+'</span>'
+    '<span class="legend-item '+(activeCatFilter===k?'cat-active':'')+'" data-cat="'+k+'" style="background:'+c.light+';color:'+c.text+'" onclick="setSidebarCat(\''+k+'\')" title="'+c.label+' 일정만 보기">● '+c.label+'</span>'
   ).join("");
 }
 

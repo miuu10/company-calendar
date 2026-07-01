@@ -626,6 +626,76 @@ window.mergeExistingEvents = async function() {
   }
 };
 
+async function handlePurchaseOrderUpload(workbook) {
+  const ws = workbook.Sheets["발주서"];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:"A", raw:true, defval:""});
+  const COLS = "A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,AA,AB".split(",");
+  function findLabelValue(label) {
+    for (let r=0; r<rows.length; r++) {
+      const row = rows[r];
+      for (let ci=0; ci<COLS.length; ci++) {
+        if (String(row[COLS[ci]]||"").trim() === label) {
+          for (let cj=ci+1; cj<COLS.length; cj++) {
+            const v = row[COLS[cj]];
+            if (v !== undefined && String(v).trim() !== "") return String(v).trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function normalizeDate(val) {
+    if (!val) return null;
+    if (typeof val === "number") {
+      const d = new Date(Math.round((val-25569)*86400*1000));
+      return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    }
+    const m = String(val).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    return m ? m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0") : null;
+  }
+
+  const orderNo = findLabelValue("발주 번호");
+  const shipDate = normalizeDate(findLabelValue("출고요망일"));
+  if (!shipDate) { addToast("발주서에서 출고요망일을 찾지 못했습니다. 양식을 확인해주세요.", "error"); return; }
+
+  let headerRow = -1;
+  for (let r=0;r<rows.length;r++){ if(String(rows[r]["B"]||"").trim()==="No."){ headerRow=r; break; } }
+  const items = [];
+  if (headerRow>=0) {
+    for (let r=headerRow+1; r<rows.length; r++){
+      const row = rows[r];
+      const no = String(row["B"]||"").trim();
+      if (no === "" || no === "계") break;
+      const name = String(row["C"]||"").trim();
+      const spec = String(row["H"]||"").trim();
+      const qty  = String(row["K"]||"").trim();
+      const unit = String(row["O"]||"").trim();
+      if (!spec && !unit) continue; // "5월 발주분" 같은 구분용 행 제외
+      items.push({name, spec, qty, unit});
+    }
+  }
+  const itemsText = items.map(it => it.name + "(" + [it.spec, (it.qty+(it.unit||""))].filter(Boolean).join(" ") + ")").join("\n");
+  const title = orderNo ? (orderNo + " 입고") : "발주 입고";
+  const description = orderNo ? ("발주번호 " + orderNo) : "";
+
+  const existingPO = orderNo ? events.find(ev => ev.category==="container" && (ev.title||"").includes(orderNo)) : null;
+  try {
+    if (existingPO) {
+      const updates = {};
+      if (existingPO.date !== shipDate) updates.date = shipDate;
+      if (itemsText && existingPO.items !== itemsText) updates.items = itemsText;
+      if (Object.keys(updates).length) { updates.updatedAt = serverTimestamp(); await updateDoc(doc(db,"events",existingPO.id), updates); addToast("✅ 기존 발주 입고 일정을 갱신했습니다. ("+orderNo+")","success"); }
+      else addToast("이미 등록된 발주 입고 일정입니다. ("+orderNo+")","success");
+    } else {
+      await addDoc(eventsCol, { title, date: shipDate, endDate: null, time:"", category:"container", description, items: itemsText, alarm:false, alarmMinutes:10, author: currentUser, repeatMaster:false, isCompleted:false, createdAt: serverTimestamp() });
+      addToast("✅ 발주서에서 입고 일정을 추가했습니다. ("+(orderNo||"")+" · "+shipDate+")","success");
+    }
+  } catch (err) {
+    console.error(err);
+    addToast("발주서 처리 중 오류: "+err.message, "error");
+  }
+}
+
 window.handleExcelUpload = async function(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -636,6 +706,12 @@ window.handleExcelUpload = async function(event) {
     try {
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, {type:'array'});
+      if (workbook.SheetNames.includes("발주서") && !workbook.SheetNames.includes("일정관리")) {
+        await handlePurchaseOrderUpload(workbook);
+        document.getElementById("loadingScreen").style.display = "none";
+        document.getElementById('excelUpload').value = '';
+        return;
+      }
       let formattedItems = {}, firstItemMap = {};
       if (workbook.SheetNames.includes("정리")) {
         const summaryData = XLSX.utils.sheet_to_json(workbook.Sheets["정리"], {header:"A", raw:true, defval:""});

@@ -676,7 +676,16 @@ async function handlePurchaseOrderUpload(workbook) {
     }
   }
   const itemsText = items.map(it => it.name + "(" + [it.spec, (it.qty+(it.unit||""))].filter(Boolean).join(" ") + ")").join("\n");
-  const title = orderNo ? (orderNo + " 입고") : "발주 입고";
+  function cleanItemName(name) {
+    return String(name||"")
+      .replace(/^\d+\)\s*/, '')                       // 앞의 "1)" 번호 제거
+      .replace(/[\(\[【][^\)\]】]*[\)\]】]\s*$/, '')    // 뒤의 (100개/팩), 【1/100/1000】 같은 포장단위 제거
+      .trim();
+  }
+  const firstItemName = items.length ? cleanItemName(items[0].name) : "";
+  const title = orderNo
+    ? (orderNo + (firstItemName ? " " + firstItemName : "") + " 입고")
+    : (firstItemName ? firstItemName + " 입고" : "발주 입고");
   const description = orderNo ? ("발주번호 " + orderNo) : "";
 
   const existingPO = orderNo ? events.find(ev => ev.category==="container" && (ev.title||"").includes(orderNo)) : null;

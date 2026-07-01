@@ -557,6 +557,11 @@ function initFirebase() {
 }
 
 function getCoreTitle(t) { return t.replace(/^\[.*?\]\s*/g, '').trim(); }
+function getOrderNo(title) {
+  const core = getCoreTitle(title).replace(/^(선수금|잔금)\s*/, '');
+  const m = core.match(/^([A-Za-z0-9\-_]+)/);
+  return m ? m[1] : null;
+}
 
 window.mergeExistingEvents = async function() {
   if(!confirm("기존에 하루씩 낱개로 등록된 똑같은 일정들을 하나의 기간 일정으로 묶어서 깔끔하게 정리합니다.\n진행하시겠습니까?")) return;
@@ -568,9 +573,7 @@ window.mergeExistingEvents = async function() {
     let targets = dbEvents.filter(e => !e.repeatMaster && !e.isHoliday && !e.isCompleted);
     let groups = {};
     targets.forEach(ev => {
-      let core = getCoreTitle(ev.title);
-      let match = core.match(/^([A-Za-z0-9\-_]+)/);
-      let order = match ? match[1] : core;
+      let order = getOrderNo(ev.title) || getCoreTitle(ev.title);
       let key = order + "|" + ev.category + "|" + (ev.description || "");
       if(!groups[key]) groups[key] = [];
       groups[key].push(ev);
@@ -724,8 +727,7 @@ window.handleExcelUpload = async function(event) {
         let uniqueKey = m.orderNo ? m.orderNo+"_"+m.category+"_"+m.date : mCore+"_"+m.date;
         let existingEvent = events.find(ev => {
           let evCore = getCoreTitle(ev.title);
-          let evOrderMatch = evCore.match(/^([A-Za-z0-9\-_]+)/);
-          let evOrder = evOrderMatch ? evOrderMatch[1] : null;
+          let evOrder = getOrderNo(ev.title);
           if (ev.title.includes("[지연]") && evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) return true;
           if (ev.date !== m.date) return false;
           if (evOrder && m.orderNo && evOrder === m.orderNo && ev.category === m.category) return true;

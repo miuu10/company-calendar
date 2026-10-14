@@ -434,23 +434,30 @@ main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 40px; display: flex
   </div>
 </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, getDocsFromServer, runTransaction }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCZEl1mfU-VqVfqAQ-LY6dOyPiGi6Z8sCY",
-  authDomain: "calendar-6be41.firebaseapp.com",
-  projectId: "calendar-6be41",
-  storageBucket: "calendar-6be41.firebasestorage.app",
-  messagingSenderId: "716563845637",
-  appId: "1:716563845637:web:234407177a4bdd6d98026c",
-  measurementId: "G-CX0RT2761J"
-};
-
-// BEGIN ONMEDICAL HOLIDAY DIRECT V3
-// 개인용 단일 HTML입니다. 아래 키는 소스/네트워크에서 보이므로 공개 배포하지 마세요.
+<script id="onmedicalHolidayService">
+(function () {
+'use strict';
+let holidayAdapter = null;
+function holidayDisplayYear() {
+  const year = holidayAdapter ? holidayAdapter.getYear() : new Date().getFullYear();
+  return Number.isInteger(year) ? year : new Date().getFullYear();
+}
+function holidayAppEvents() {
+  const value = holidayAdapter ? holidayAdapter.getEvents() : [];
+  return Array.isArray(value) ? value : [];
+}
+function addToast(message,type='info') {
+  const root=document.getElementById('toasts');
+  if(!root)return;
+  const item=document.createElement('div');
+  item.className='toast '+type;
+  item.textContent=message;
+  root.appendChild(item);
+  setTimeout(()=>item.remove(),5000);
+}
+// BEGIN ONMEDICAL HOLIDAY DIRECT V4
+// 주신 두 API 키를 바로 사용합니다. 추가 입력/설정 파일/별도 서버는 필요하지 않습니다.
+// 브라우저 직접 호출이므로 아래 키는 HTML 소스와 네트워크 요청에서 보입니다.
 const holidayAPIKeys = Object.freeze({
   "DATA_GO_KR_KEY": "DmmYe1W8iRjse6l6yltNpzhCz%2Fz%2BAqt6ZQ31%2Bdr6T7EbPn89oZRlaEFrihEZsruEt%2Bsxojc6nwHvoyadi6WXNA%3D%3D",
   "CALENDARIFIC_KEY": "Xn7hbS6cZGutG2zy00Mnszh5AgaLbzuI"
@@ -555,7 +562,12 @@ function holidaySaveState(s){
 function holidayQueueRender(){
   if(holidayRenderQueued)return;
   holidayRenderQueued=true;
-  queueMicrotask(()=>{holidayRenderQueued=false;renderCells();renderList();renderHolidayStatus();});
+  queueMicrotask(()=>{
+    holidayRenderQueued=false;
+    try { if(holidayAdapter)holidayAdapter.render(); }
+    catch { /* 일정 표시 실패가 공휴일 자료 수신을 중단하지 않도록 분리합니다. */ }
+    renderHolidayStatus();
+  });
 }
 async function holidayFetchText(url,provider,timeout=12000){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
@@ -665,7 +677,7 @@ async function holidayRefreshCountry(country,year,force=false){
       const retry=['AUTH','FORBIDDEN','QUOTA','KEY_REQUIRED','EMPTY'].includes(error.code)?HOLIDAY_TTL:HOLIDAY_RETRY;
       const next={...old,lastAttemptAt:now,nextAttemptAt:now+retry,status:old.holidays.length?'stale':'error',error};
       holidayStates.set(k,next);return next;
-    }finally{holidayPending.delete(k);if(year===currentYear)holidayQueueRender();}
+    }finally{holidayPending.delete(k);if(year===holidayDisplayYear())holidayQueueRender();}
   });
   holidayPending.set(k,task);return task;
 }
@@ -680,7 +692,7 @@ function startHolidayAuto(){
   const check=()=>{
     if(document.hidden)return;
     const y=new Date().getFullYear();
-    for(const year of new Set([currentYear,y,y+1]))void ensureHolidayYear(year);
+    for(const year of new Set([holidayDisplayYear(),y,y+1]))void ensureHolidayYear(year);
   };
   check();setInterval(check,15*60*1000);
   document.addEventListener('visibilitychange',check);window.addEventListener('online',check);
@@ -697,11 +709,11 @@ function holidayRecords(dateStr){
         rows.push({country,name:(holidayNameMap[h.name]||h.name)+scope+(h.provisional?' [잠정]':''),substitute:h.substitute});
       }
     }else{
-      for(const h of events.filter(e=>legacyHoliday(e)&&String(e.country).toLowerCase()===country&&e.date===dateStr))
+      for(const h of holidayAppEvents().filter(e=>legacyHoliday(e)&&String(e.country).toLowerCase()===country&&e.date===dateStr))
         rows.push({country,name:h.title+' (기존 자료·미검증)',substitute:String(h.title).includes('대체')});
     }
   }
-  for(const h of events.filter(e=>e.isHoliday&&manualHoliday(e)&&e.date===dateStr)){
+  for(const h of holidayAppEvents().filter(e=>e.isHoliday&&manualHoliday(e)&&e.date===dateStr)){
     const country=String(h.country||'kr').toLowerCase();
     if(holidayCountryCodes.includes(country))rows.push({country,name:h.title,substitute:String(h.title).includes('대체')});
   }
@@ -718,24 +730,88 @@ function renderHolidayStatus(){
   const host=document.getElementById('holidayStatus');if(!host)return;
   const labels={missing:'조회 대기',loading:'조회 중',ok:'API 수신 정상',cached:'저장 자료',stale:'이전 자료 유지',error:'조회 실패'};
   host.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap">'+holidayCountryCodes.map(c=>{
-    const s=holidayState(c,currentYear),stamp=s.fetchedAt?new Date(s.fetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}):'정상 수신 기록 없음';
+    const s=holidayState(c,holidayDisplayYear()),stamp=s.fetchedAt?new Date(s.fetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}):'정상 수신 기록 없음';
     return '<div style="flex:1;min-width:200px"><strong>'+holidayCountryNames[c]+'</strong> '+holidayEscape(labels[s.status]||s.status)+
       (s.holidays.length?' · '+s.holidays.length+'건':'')+
       '<div style="font-size:11px;color:#64748B">'+holidayEscape(s.provider||'연결 대기')+' · '+holidayEscape(stamp)+'</div>'+
       (s.error?'<div style="font-size:11px;color:#B91C1C">'+holidayEscape(s.error.message)+'</div>':'')+
       (s.warning?'<div style="font-size:11px;color:#92400E">'+holidayEscape(s.warning)+'</div>':'')+'</div>';
-  }).join('')+'</div><div style="font-size:11px;color:#64748B;margin-top:6px">개인용 직접 API 연결 · 정상 목록은 24시간 재사용합니다. 해외는 national 분류 기준입니다. API 키가 포함된 HTML이므로 공개 배포하지 마세요.</div>';
+  }).join('')+'</div><div style="font-size:11px;color:#64748B;margin-top:6px">입력된 API 키로 자동 조회 · 정상 목록은 24시간 재사용합니다. 해외는 national 분류 기준입니다. HTML 소스에는 인증키가 포함되어 있습니다.</div>';
   const btn=document.getElementById('syncHolidayBtn');
-  if(btn){const busy=holidayCountryCodes.some(c=>holidayState(c,currentYear).status==='loading');
+  if(btn){const busy=holidayCountryCodes.some(c=>holidayState(c,holidayDisplayYear()).status==='loading');
     btn.textContent=busy?'🔄 공휴일 조회 중':'🔄 공휴일 다시 조회';btn.disabled=busy;btn.classList.add('order-action');}
 }
 window.syncHolidays=async function(){
-  const p=await ensureHolidayYear(currentYear,true);
+  const p=await ensureHolidayYear(holidayDisplayYear(),true);
   if(!p){addToast('조회 가능한 연도는 1900~2100년입니다.','error');return;}
   const ok=p.countries.filter(s=>s.holidays.length&&!s.error&&Date.now()-s.fetchedAt<HOLIDAY_TTL).length;
   addToast(ok===4?'네 국가의 공휴일 수신 자료를 확인했습니다.':`정상 자료 ${ok}/4개국. 상단 오류를 확인하세요. 재시도는 최소 1분 간격입니다.`,ok===4?'success':'error');
 };
-// END ONMEDICAL HOLIDAY DIRECT V3
+// END ONMEDICAL HOLIDAY DIRECT V4
+Object.assign(window, {
+  holidayEscape, toLocalISO, readHolidayLocal, getDynamicHolidays,
+  getHolidayName, isSubstituteHoliday, renderHolidayStatus,
+  queueHolidayRefresh, startHolidayAuto
+});
+const applicationWatch = setTimeout(() => {
+  if(holidayAdapter)return;
+  const screen=document.getElementById('loadingScreen');
+  if(screen)screen.style.display='none';
+  const host=document.getElementById('holidayStatus');
+  if(host&&!document.getElementById('calendarModuleNotice')){
+    const note=document.createElement('div');
+    note.id='calendarModuleNotice';
+    note.style.cssText='max-width:1360px;margin:8px auto;padding:12px 18px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;color:#9A3412;font-size:13px';
+    note.textContent='일정 모듈이 시작되지 않았습니다. 공휴일 조회는 별도로 진행됩니다. 일정 편집 전 인터넷 연결을 확인하고 새로고침하세요.';
+    host.insertAdjacentElement('afterend',note);
+  }
+},15000);
+window.OnmedicalHoliday = Object.freeze({
+  attach(adapter) {
+    if(!adapter||typeof adapter.getYear!=='function'||typeof adapter.getEvents!=='function'||typeof adapter.render!=='function')
+      throw new TypeError('캘린더 공휴일 연결 정보가 올바르지 않습니다.');
+    holidayAdapter=adapter;
+    clearTimeout(applicationWatch);
+    document.getElementById('calendarModuleNotice')?.remove();
+  },
+  inspect() {
+    return {
+      format:'onmedical-holiday-diagnostics-v4',
+      checkedAt:new Date().toISOString(),
+      applicationAttached:!!holidayAdapter,
+      years:[...holidayReadYears],
+      countries:[...holidayStates.values()].map(s=>({
+        country:s.country,year:s.year,provider:s.provider,status:s.status,
+        count:s.holidays.length,fetchedAt:s.fetchedAt,
+        lastAttemptAt:s.lastAttemptAt,nextAttemptAt:s.nextAttemptAt,
+        error:s.error,warning:s.warning
+      }))
+    };
+  }
+});
+// Firebase 모듈을 기다리지 않고 공휴일 조회를 시작합니다.
+renderHolidayStatus();
+startHolidayAuto();
+})();
+</script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, getDocsFromServer, runTransaction }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCZEl1mfU-VqVfqAQ-LY6dOyPiGi6Z8sCY",
+  authDomain: "calendar-6be41.firebaseapp.com",
+  projectId: "calendar-6be41",
+  storageBucket: "calendar-6be41.firebasestorage.app",
+  messagingSenderId: "716563845637",
+  appId: "1:716563845637:web:234407177a4bdd6d98026c",
+  measurementId: "G-CX0RT2761J"
+};
+
+// 공휴일은 위의 독립 스크립트에서 처리합니다.
+
 
 
 function isWorkingDay(dateStr, category, forceShow) {
@@ -767,7 +843,15 @@ let editingId = null, currentEditDate = null;
 let currentView = "cal", listMode = "year";
 let currentUser = "팀원";
 let activeFilter = "all", activeCatFilter = null;
-let firedAlarms = JSON.parse(localStorage.getItem("firedAlarms") || "{}");
+let firedAlarms = Object.create(null);
+try {
+  const savedAlarms=JSON.parse(localStorage.getItem("firedAlarms") || "{}");
+  if(savedAlarms&&typeof savedAlarms==='object'&&!Array.isArray(savedAlarms)){
+    for(const [key,value] of Object.entries(savedAlarms)){
+      if(value===true)firedAlarms[key]=true;
+    }
+  }
+} catch { /* 손상된 알람 캐시 때문에 캘린더 전체가 중단되지 않도록 합니다. */ }
 const today = new Date();
 
 // ===== 연/월 피커 =====
@@ -1845,6 +1929,11 @@ window.saveEvent=async function() {
   finally{calendarWriteBusy=false;}
 };
 
+window.OnmedicalHoliday.attach({
+  getYear:()=>currentYear,
+  getEvents:()=>events,
+  render:()=>{renderCells();renderList();}
+});
 initFirebase();
 startHolidayAuto();
 

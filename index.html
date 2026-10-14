@@ -449,11 +449,14 @@ const firebaseConfig = {
   measurementId: "G-CX0RT2761J"
 };
 
-// BEGIN ONMEDICAL HOLIDAY AUTO V2
-// 기존 주문 데이터는 읽기만 합니다. API 키는 HTML·Firestore에 저장하지 않습니다.
+// BEGIN ONMEDICAL HOLIDAY DIRECT V3
+// 개인용 단일 HTML입니다. 아래 키는 소스/네트워크에서 보이므로 공개 배포하지 마세요.
+const holidayAPIKeys = Object.freeze({
+  "DATA_GO_KR_KEY": "DmmYe1W8iRjse6l6yltNpzhCz%2Fz%2BAqt6ZQ31%2Bdr6T7EbPn89oZRlaEFrihEZsruEt%2Bsxojc6nwHvoyadi6WXNA%3D%3D",
+  "CALENDARIFIC_KEY": "Xn7hbS6cZGutG2zy00Mnszh5AgaLbzuI"
+});
 const holidayCountryNames = Object.freeze({kr:'한국',cn:'중국',th:'태국',my:'말레이시아'});
 const holidayCountryCodes = Object.keys(holidayCountryNames);
-const holidayEndpoint = '/api/holidays';
 const holidayCompanyClosures = {'05-01':'근로자의 날 (회사 휴무 설정)'};
 const holidayNameMap = {
   "New Year's Day":"신년", "Chinese New Year":"춘절", "Chinese New Year's Day":"춘절",
@@ -474,195 +477,140 @@ const holidayNameMap = {
 const HOLIDAY_TTL = 24 * 60 * 60 * 1000;
 const HOLIDAY_RETRY = 60 * 60 * 1000;
 const HOLIDAY_MIN_RETRY = 60 * 1000;
-const HOLIDAY_STORE = 'onmedical_holidays_v2_';
-const HOLIDAY_SETTINGS = 'onmedical_holiday_connection_v2';
+const HOLIDAY_STORE = 'onmedical_holidays_direct_v3_';
 const holidayStates = new Map();
 const holidayPending = new Map();
-const holidayServerPending = new Map();
 const holidayReadYears = new Set();
-const holidayDirectPending = new Map();
 let holidayRenderQueued = false;
 let holidayTimerStarted = false;
-let holidayConfigGeneration = 0;
-let holidaySettingsMessage = '';
 
-function holidayEscape(value) {
-  return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function holidayEscape(v) {
+  return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function toLocalISO(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-function holidayReadStorage(key) {
-  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
-}
-function holidayWriteStorage(key,value) {
-  try { localStorage.setItem(key,JSON.stringify(value)); return true; } catch { return false; }
-}
-function holidayKey(value) {
-  const s=String(value || '').trim();
-  if(s.length>1024 || /[\r\n\u0000]/.test(s)) throw new Error('인증키 형식을 확인하세요.');
-  return s;
-}
-function holidayConfigFrom(value) {
-  const v=value && typeof value==='object'?value:{};
-  return {
-    mode: ['auto','direct','server'].includes(v.mode)?v.mode:'auto',
-    DATA_GO_KR_KEY: holidayKey(v.DATA_GO_KR_KEY || v.ONMEDICAL_DATA_GO_KR_KEY),
-    CALENDARIFIC_KEY: holidayKey(v.CALENDARIFIC_KEY || v.ONMEDICAL_CALENDARIFIC_KEY),
-    remember: v.remember===true
-  };
-}
-let holidayConfig;
-try { holidayConfig=holidayConfigFrom(holidayReadStorage(HOLIDAY_SETTINGS)); }
-catch { holidayConfig=holidayConfigFrom(null); }
-
+function holidayYearAllowed(y) { return Number.isInteger(y) && y>=1900 && y<=2100; }
+function holidayReadStorage(k) { try{return JSON.parse(localStorage.getItem(k)||'null');}catch{return null;} }
+function holidayWriteStorage(k,v) { try{localStorage.setItem(k,JSON.stringify(v));}catch{} }
 class HolidayConnectionError extends Error {
-  constructor(code,message){ super(message); this.name='HolidayConnectionError'; this.code=code; }
+  constructor(code,message){super(message);this.name='HolidayConnectionError';this.code=code;}
 }
 function holidayError(code,message){return new HolidayConnectionError(code,message);}
-function holidaySafeError(e) {
-  if(e instanceof HolidayConnectionError) return {code:e.code,message:e.message};
-  return {code:'UNEXPECTED',message:'공휴일 응답을 처리하지 못했습니다. 연결 진단에서 오류 단계를 확인하세요.'};
+function holidaySafeError(e){
+  return e instanceof HolidayConnectionError ? {code:e.code,message:e.message} :
+    {code:'UNEXPECTED',message:'공휴일 응답 처리에 실패했습니다. 기존 정상 자료는 유지합니다.'};
 }
-function holidayYearAllowed(year) {return Number.isInteger(year)&&year>=1900&&year<=2100;}
-function holidayISO(value,year) {
-  const s=String(value || '');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||Number(s.slice(0,4))!==Number(year))
-    throw holidayError('DATE','조회 연도와 공휴일 날짜가 일치하지 않습니다.');
+function holidayISO(v,year){
+  const s=String(v||'');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||Number(s.slice(0,4))!==year)
+    throw holidayError('DATE','공휴일 날짜와 조회 연도가 일치하지 않습니다.');
   const d=new Date(s+'T12:00:00Z');
   if(!Number.isFinite(+d)||d.toISOString().slice(0,10)!==s)
-    throw holidayError('DATE','API에서 유효하지 않은 날짜를 반환했습니다.');
+    throw holidayError('DATE','API가 유효하지 않은 날짜를 반환했습니다.');
   return s;
 }
-function holidayNormalizeRows(rows,country,year) {
-  if(!Array.isArray(rows)||rows.length>5000)throw holidayError('FORMAT','공휴일 목록 형식이 올바르지 않습니다.');
-  if(!rows.length)throw holidayError('EMPTY','API가 빈 목록을 반환했습니다. 기존 정상 자료는 지우지 않았습니다.');
+function holidayNormalizeRows(rows,country,year){
+  if(!Array.isArray(rows)||!rows.length)throw holidayError('EMPTY','공휴일 목록이 비어 있습니다. 기존 정상 자료는 유지합니다.');
+  if(rows.length>5000)throw holidayError('FORMAT','공휴일 목록이 예상 범위를 초과했습니다.');
   const unique=new Map();
   for(const h of rows){
     if(!h||h.country!==country||typeof h.name!=='string'||!h.name.trim()||h.name.length>500)
       throw holidayError('FORMAT','공휴일 이름 또는 국가 정보가 올바르지 않습니다.');
-    const row={
-      country,date:holidayISO(h.date,year),name:h.name.trim(),
+    const row={country,date:holidayISO(h.date,year),name:h.name.trim(),
       locations:typeof h.locations==='string'?h.locations.slice(0,1500):'',
-      substitute:h.substitute===true,
-      provisional:h.provisional===true||/provisional|tentative|forecast|예상|잠정/i.test(h.name)
-    };
+      substitute:h.substitute===true,provisional:h.provisional===true};
     unique.set(JSON.stringify([row.date,row.name,row.locations]),row);
   }
   return [...unique.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
 }
 function holidayStateKey(c,y){return c+'_'+y;}
-function holidayEmptyState(c,y){
-  return {country:c,year:y,holidays:[],fetchedAt:0,lastAttemptAt:0,nextAttemptAt:0,provider:'',status:'missing',error:null,warning:''};
-}
-function readHolidayLocal(year) {
+function readHolidayLocal(year){
   if(holidayReadYears.has(year))return;
   holidayReadYears.add(year);
-  const previous=holidayReadStorage('onmedical_holidays_v1_'+year);
+  const oldYear=holidayReadStorage('onmedical_holidays_v1_'+year);
   for(const country of holidayCountryCodes){
-    const key=holidayStateKey(country,year);
-    let stored=holidayReadStorage(HOLIDAY_STORE+key);
-    if(!stored){
-      const old=previous?.countries?.find?.(c=>c.country===country&&c.hasData);
-      if(old)stored={...old,provider:old.provider||'기존 서버 캐시',warning:'이전 정상 수신 자료입니다.'};
-    }
-    let state=holidayEmptyState(country,year);
+    const k=holidayStateKey(country,year);
+    const stored=holidayReadStorage(HOLIDAY_STORE+k)||holidayReadStorage('onmedical_holidays_v2_'+k)||
+      oldYear?.countries?.find?.(c=>c.country===country&&c.hasData);
+    let state={country,year,holidays:[],provider:'',fetchedAt:0,lastAttemptAt:0,nextAttemptAt:0,status:'missing',error:null,warning:''};
     if(stored){
-      // 잘못된 캐시 하나가 다른 국가나 캘린더 전체를 중단하지 않습니다.
-      try {
-        const holidays=holidayNormalizeRows(stored.holidays,country,year);
-        const fetchedAt=Number(stored.fetchedAt);
-        if(!Number.isFinite(fetchedAt)||fetchedAt<=0||fetchedAt>Date.now()+300000)throw new Error();
-        state={...state,holidays,fetchedAt,provider:String(stored.provider||'이전 캐시'),
-          status:'cached',warning:String(stored.warning||'')};
-      } catch {}
+      try{
+        const holidays=holidayNormalizeRows(stored.holidays,country,year),stamp=Number(stored.fetchedAt);
+        if(!Number.isFinite(stamp)||stamp<=0||stamp>Date.now()+300000)throw new Error();
+        state={...state,holidays,fetchedAt:stamp,provider:String(stored.provider||'이전 수신 자료'),
+          warning:String(stored.warning||''),status:'cached'};
+      }catch{}
     }
-    holidayStates.set(key,state);
+    holidayStates.set(k,state);
   }
 }
-function holidayState(country,year){readHolidayLocal(year);return holidayStates.get(holidayStateKey(country,year));}
-function holidaySaveState(state) {
-  if(!state.holidays.length)return;
-  // 상태 캐시에는 인증키/요청 URL/원본 오류 응답을 넣지 않습니다.
-  holidayWriteStorage(HOLIDAY_STORE+holidayStateKey(state.country,state.year),{
-    country:state.country,year:state.year,holidays:state.holidays,
-    fetchedAt:state.fetchedAt,provider:state.provider,warning:state.warning
+function holidayState(c,y){readHolidayLocal(y);return holidayStates.get(holidayStateKey(c,y));}
+function holidaySaveState(s){
+  // API 키/요청 URL은 캐시에 저장하지 않습니다. 주문 DB도 수정하지 않습니다.
+  if(s.holidays.length)holidayWriteStorage(HOLIDAY_STORE+holidayStateKey(s.country,s.year),{
+    country:s.country,year:s.year,holidays:s.holidays,provider:s.provider,fetchedAt:s.fetchedAt,warning:s.warning
   });
 }
-function holidayQueueRender() {
+function holidayQueueRender(){
   if(holidayRenderQueued)return;
   holidayRenderQueued=true;
-  queueMicrotask(()=>{
-    holidayRenderQueued=false;
-    // 공휴일 변경 때문에 열린 일정 입력창을 닫거나 주문을 저장하지 않습니다.
-    renderCells(); renderList(); renderHolidayStatus();
-  });
+  queueMicrotask(()=>{holidayRenderQueued=false;renderCells();renderList();renderHolidayStatus();});
 }
-async function holidayFetchText(url,provider,timeoutMs=12000) {
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),timeoutMs);
-  try {
-    const res=await fetch(url,{method:'GET',credentials:'omit',referrerPolicy:'no-referrer',
-      cache:'no-store',signal:controller.signal});
-    if(!res.ok){
-      const code=res.status===401?'AUTH':res.status===403?'FORBIDDEN':res.status===429?'QUOTA':'HTTP';
-      const message=res.status===401?'인증키 또는 필수 조회값을 확인하세요.':
-        res.status===403?'사용 권한 또는 구독 상태를 확인하세요.':
-        res.status===429?'호출 한도에 도달했습니다. 같은 키의 전체 사용량을 확인하세요.':
-        '서버가 정상 응답하지 않았습니다.';
-      throw holidayError(code,provider+': HTTP '+res.status+' · '+message);
+async function holidayFetchText(url,provider,timeout=12000){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const r=await fetch(url,{method:'GET',credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:controller.signal});
+    if(!r.ok){
+      const code=r.status===401?'AUTH':r.status===403?'FORBIDDEN':r.status===429?'QUOTA':'HTTP';
+      const hint=r.status===401?'인증키 또는 필수 조회값을 확인하세요.':
+        r.status===403?'이 키의 API 사용 권한/구독 상태를 확인하세요.':
+        r.status===429?'이 키의 호출 한도에 도달했습니다.':'정상 응답을 받지 못했습니다.';
+      throw holidayError(code,provider+': HTTP '+r.status+' · '+hint);
     }
-    const text=await res.text();
-    if(text.length>2000000)throw holidayError('SIZE',provider+': 응답 용량이 예상 범위를 초과했습니다.');
-    return {text,type:res.headers.get('content-type')||''};
-  } catch(e) {
+    const text=await r.text();
+    if(text.length>2000000)throw holidayError('FORMAT',provider+': 응답 용량이 예상 범위를 초과했습니다.');
+    return text;
+  }catch(e){
     if(e instanceof HolidayConnectionError)throw e;
     if(controller.signal.aborted)throw holidayError('TIMEOUT',provider+': 응답 시간이 초과되었습니다.');
-    // 브라우저는 CORS/차단/DNS/단절을 같은 fetch 오류로 줄 수 있으므로 단정하지 않습니다.
-    throw holidayError('NETWORK',provider+': 연결 실패. 인터넷·브라우저 차단·CORS 중 어느 원인인지는 이 응답만으로 확인할 수 없습니다.');
-  } finally {clearTimeout(timer);}
+    throw holidayError('NETWORK',provider+': 연결 실패. 네트워크·브라우저 차단·CORS 중 어느 원인인지는 이 응답만으로 확인할 수 없습니다.');
+  }finally{clearTimeout(timer);}
 }
-function holidayParseKorean(text,year) {
-  let data;
-  const raw=String(text).trim().replace(/^\uFEFF/,'');
+function holidayParseKorean(text,year){
+  const raw=String(text).trim().replace(/^\uFEFF/,'');let data;
   if(raw.startsWith('{')){
     try{data=JSON.parse(raw);}catch{throw holidayError('FORMAT','한국 API: JSON을 해석하지 못했습니다.');}
-  } else {
-    if(/<!DOCTYPE|<!ENTITY/i.test(raw))throw holidayError('FORMAT','한국 API: 예상하지 못한 XML 선언입니다.');
+  }else{
+    if(/<!DOCTYPE|<!ENTITY/i.test(raw))throw holidayError('FORMAT','한국 API: 예상하지 못한 응답 형식입니다.');
     const xml=new DOMParser().parseFromString(raw,'application/xml');
     if(xml.getElementsByTagName('parsererror').length)throw holidayError('FORMAT','한국 API: XML을 해석하지 못했습니다.');
     const read=(node,n)=>node.getElementsByTagName(n)[0]?.textContent?.trim()||'';
     const reason=read(xml,'returnReasonCode');
-    if(reason)throw holidayError('AUTH','한국 API: 오류 코드 '+reason.replace(/[^A-Z0-9_-]/gi,'').slice(0,30)+' · 인증키·활용승인·호출 한도를 확인하세요.');
-    data={response:{header:{resultCode:read(xml,'resultCode')},body:{
-      totalCount:read(xml,'totalCount'),items:{item:[...xml.getElementsByTagName('item')].map(n=>({
-        locdate:read(n,'locdate'),dateName:read(n,'dateName'),isHoliday:read(n,'isHoliday')
-      }))}
-    }}};
+    if(reason)throw holidayError(reason==='22'?'QUOTA':'AUTH','한국 API: 오류 코드 '+reason.replace(/[^A-Z0-9_-]/gi,'').slice(0,30)+' · 인증키·활용승인·호출 한도를 확인하세요.');
+    data={response:{header:{resultCode:read(xml,'resultCode')},body:{totalCount:read(xml,'totalCount'),items:{item:
+      [...xml.getElementsByTagName('item')].map(n=>({locdate:read(n,'locdate'),dateName:read(n,'dateName'),isHoliday:read(n,'isHoliday')}))
+    }}}};
   }
-  const response=data?.response,code=String(response?.header?.resultCode??'');
-  if(!['00','0'].includes(code))throw holidayError('PROVIDER','한국 API: 오류 코드 '+code.replace(/[^A-Z0-9_-]/gi,'').slice(0,30)+' · 인증키·활용승인·호출 한도를 확인하세요.');
-  const body=response.body||{},rawItems=body.items?.item;
+  const r=data?.response,code=String(r?.header?.resultCode??'');
+  if(!['00','0'].includes(code))throw holidayError(code==='22'?'QUOTA':'PROVIDER','한국 API: 오류 코드 '+code.replace(/[^A-Z0-9_-]/gi,'').slice(0,30)+' · 인증키·활용승인 상태를 확인하세요.');
+  const body=r.body||{},rawItems=body.items?.item;
   const items=Array.isArray(rawItems)?rawItems:(rawItems&&typeof rawItems==='object'?[rawItems]:[]);
-  const total=Number(body.totalCount);
-  if(!Number.isInteger(total)||total!==items.length)throw holidayError('INCOMPLETE','한국 API: 연간 목록이 일부만 반환되었습니다. 기존 목록을 유지합니다.');
+  if(!Number.isInteger(Number(body.totalCount))||Number(body.totalCount)!==items.length)
+    throw holidayError('INCOMPLETE','한국 API: 연간 목록이 일부만 반환되어 적용하지 않았습니다.');
   return holidayNormalizeRows(items.filter(h=>h.isHoliday==='Y').map(h=>({
-    country:'kr',date:String(h.locdate).replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3'),
-    name:h.dateName,locations:'All',substitute:String(h.dateName).includes('대체')
+    country:'kr',date:String(h.locdate).replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3'),name:h.dateName,
+    locations:'All',substitute:String(h.dateName).includes('대체')
   })),'kr',year);
 }
-function holidayParseCalendarific(text,country,year) {
-  let data;
-  try{data=JSON.parse(text);}catch{throw holidayError('FORMAT','Calendarific: JSON을 해석하지 못했습니다.');}
+function holidayParseCalendarific(text,country,year){
+  let data;try{data=JSON.parse(text);}catch{throw holidayError('FORMAT','Calendarific: JSON을 해석하지 못했습니다.');}
   const code=Number(data?.meta?.code);
-  if(code!==200){
-    const message=code===401?'인증키 또는 필수 조회값을 확인하세요.':
-      code===403?'API 구독 상태를 확인하세요.':code===429?'API 호출 한도에 도달했습니다.':'요청을 처리하지 못했습니다.';
-    throw holidayError(code===429?'QUOTA':code===401?'AUTH':'PROVIDER','Calendarific: 코드 '+(Number.isFinite(code)?code:'없음')+' · '+message);
-  }
-  const items=data?.response?.holidays;
-  if(!Array.isArray(items))throw holidayError('FORMAT','Calendarific: 공휴일 목록이 없습니다.');
-  return holidayNormalizeRows(items.map(h=>{
+  if(code!==200)throw holidayError(code===429?'QUOTA':code===401?'AUTH':'PROVIDER',
+    'Calendarific: 코드 '+(Number.isFinite(code)?code:'없음')+' · 인증키·구독·호출 한도를 확인하세요.');
+  const rows=data?.response?.holidays;
+  if(!Array.isArray(rows))throw holidayError('FORMAT','Calendarific: 공휴일 목록 형식이 올바르지 않습니다.');
+  return holidayNormalizeRows(rows.map(h=>{
     const id=typeof h.country==='string'?h.country:h.country?.id;
     if(id&&String(id).toLowerCase()!==country)throw holidayError('COUNTRY','Calendarific: 다른 국가 자료가 반환되어 적용하지 않았습니다.');
     const dt=h.date?.datetime;
@@ -673,115 +621,73 @@ function holidayParseCalendarific(text,country,year) {
       provisional:/provisional|tentative|forecast/i.test(String(h.name)+' '+String(h.description||''))};
   }),country,year);
 }
-async function holidayCalendarific(country,year,config) {
-  if(!config.CALENDARIFIC_KEY)throw holidayError('KEY_REQUIRED','Calendarific 키가 없습니다. 공휴일 연결에서 개인설정 JSON을 불러오세요.');
-  const params=new URLSearchParams({api_key:config.CALENDARIFIC_KEY,country:country.toUpperCase(),year:String(year),type:'national'});
-  const {text}=await holidayFetchText('https://calendarific.com/api/v2/holidays?'+params,'Calendarific');
-  return {holidays:holidayParseCalendarific(text,country,year),provider:'Calendarific · 직접 연결',fetchedAt:Date.now(),warning:''};
+async function holidayCalendarific(country,year){
+  if(!holidayAPIKeys.CALENDARIFIC_KEY)throw holidayError('KEY_REQUIRED','HTML의 Calendarific 인증키가 비어 있습니다.');
+  const params=new URLSearchParams({api_key:holidayAPIKeys.CALENDARIFIC_KEY,country:country.toUpperCase(),year:String(year),type:'national'});
+  const text=await holidayFetchText('https://calendarific.com/api/v2/holidays?'+params,'Calendarific');
+  return {holidays:holidayParseCalendarific(text,country,year),provider:'Calendarific',fetchedAt:Date.now(),warning:''};
 }
-async function holidayDirect(country,year,config) {
-  if(country!=='kr')return holidayCalendarific(country,year,config);
-  let failure=null;
-  if(config.DATA_GO_KR_KEY){
-    try {
-      let key=config.DATA_GO_KR_KEY;
-      try{if(/%[0-9a-f]{2}/i.test(key))key=decodeURIComponent(key);}catch{throw holidayError('AUTH','한국 API: 인증키 인코딩 형식이 올바르지 않습니다.');}
-      const params=new URLSearchParams({serviceKey:key,solYear:String(year),numOfRows:'100',pageNo:'1',_type:'json'});
-      const {text}=await holidayFetchText('https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo?'+params,'한국천문연구원',10000);
-      return {holidays:holidayParseKorean(text,year),provider:'한국천문연구원 · 직접 연결',fetchedAt:Date.now(),warning:''};
-    } catch(e){failure=holidaySafeError(e);}
-  }
-  if(config.CALENDARIFIC_KEY){
-    const result=await holidayCalendarific('kr',year,config);
-    result.warning=(failure?failure.message:'한국 공공데이터 키가 설정되지 않았습니다.')+' 한국은 Calendarific 대체 자료를 표시합니다.';
+async function holidayFetchCountry(country,year){
+  if(country!=='kr')return holidayCalendarific(country,year);
+  let failure;
+  try{
+    let key=holidayAPIKeys.DATA_GO_KR_KEY;
+    if(!key)throw holidayError('KEY_REQUIRED','한국 공공데이터 인증키가 비어 있습니다.');
+    if(/%[0-9a-f]{2}/i.test(key))key=decodeURIComponent(key);
+    const params=new URLSearchParams({ServiceKey:key,solYear:String(year),numOfRows:'100',pageNo:'1',_type:'json'});
+    const text=await holidayFetchText('https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo?'+params,'한국천문연구원',10000);
+    return {holidays:holidayParseKorean(text,year),provider:'한국천문연구원',fetchedAt:Date.now(),warning:''};
+  }catch(e){failure=holidaySafeError(e);}
+  try{
+    const result=await holidayCalendarific('kr',year);
+    result.warning=failure.message+' 한국은 Calendarific 대체 자료를 표시합니다.';
     return result;
+  }catch(e){
+    const fallback=holidaySafeError(e);
+    throw holidayError(fallback.code,failure.message+' / 한국 대체 조회도 실패: '+fallback.message);
   }
-  throw failure?holidayError(failure.code,failure.message):holidayError('KEY_REQUIRED','공휴일 연결에서 개인설정 JSON을 불러오세요.');
 }
-async function holidayServerYear(year) {
-  if(holidayServerPending.has(year))return holidayServerPending.get(year);
-  const task=Promise.resolve().then(async()=>{
-    if(location.protocol==='file:')throw holidayError('SERVER_UNAVAILABLE','파일로 직접 열었습니다. 공휴일 연결에서 직접 API 연결을 설정하세요.');
-    const {text}=await holidayFetchText(holidayEndpoint+'?year='+year,'공휴일 서버',18000);
-    if(/^\s*</.test(text))throw holidayError('SERVER_MISSING','/api/holidays가 JSON 대신 HTML을 반환했습니다. 서버 미연결 상태입니다. 공휴일 연결에서 직접 API로 전환할 수 있습니다.');
-    let payload;
-    try{payload=JSON.parse(text);}catch{throw holidayError('SERVER_FORMAT','공휴일 서버 응답이 JSON 형식이 아닙니다.');}
-    if(payload?.schemaVersion!==1||Number(payload.year)!==year||!Array.isArray(payload.countries))
-      throw holidayError('SERVER_FORMAT','공휴일 서버의 응답 형식 또는 연도가 올바르지 않습니다.');
-    return payload;
-  }).finally(()=>holidayServerPending.delete(year));
-  holidayServerPending.set(year,task);
-  return task;
-}
-async function holidayFetchCountry(country,year,config,force) {
-  const hasKey=country==='kr'?(config.DATA_GO_KR_KEY||config.CALENDARIFIC_KEY):config.CALENDARIFIC_KEY;
-  // 직접 연결을 설정한 경우에는 존재하지 않는 /api/holidays를 거치지 않습니다.
-  if(config.mode==='direct'||(config.mode==='auto'&&hasKey))return holidayDirect(country,year,config);
-  const p=await holidayServerYear(year);
-  const entry=p.countries.find(c=>c.country===country);
-  if(!entry)throw holidayError('SERVER_COUNTRY',holidayCountryNames[country]+': 서버 응답에 이 국가가 없습니다.');
-  if(!entry.hasData||!entry.holidays?.length)throw holidayError('SERVER_DATA',holidayCountryNames[country]+': 서버 자료 없음. '+String(entry.error?.code||'').replace(/[^A-Z0-9_-]/gi,'').slice(0,30));
-  const holidays=holidayNormalizeRows(entry.holidays,country,year);
-  const stamp=Number(entry.fetchedAt);
-  if(!Number.isFinite(stamp)||stamp<=0||stamp>Date.now()+300000)throw holidayError('SERVER_TIME','서버의 정상 수신 시각이 올바르지 않습니다.');
-  const stale=entry.status!=='ok'||Date.now()-stamp>=HOLIDAY_TTL;
-  return {holidays,fetchedAt:stamp,provider:String(entry.provider||'기존 공휴일 서버'),
-    warning:stale?'서버가 이전 자료를 반환했습니다. 직접 API 연결로 재조회할 수 있습니다.':'',stale};
-}
-async function holidayRefreshCountry(country,year,force=false) {
-  const key=holidayStateKey(country,year),old=holidayState(country,year);
-  if(holidayDirectPending.has(key))return holidayDirectPending.get(key);
-  const now=Date.now();
+async function holidayRefreshCountry(country,year,force=false){
+  const k=holidayStateKey(country,year),old=holidayState(country,year),now=Date.now();
+  if(holidayPending.has(k))return holidayPending.get(k);
   if(!force&&old.holidays.length&&!old.error&&now-old.fetchedAt<HOLIDAY_TTL)return old;
   if(!force&&old.nextAttemptAt>now)return old;
   if(force&&old.lastAttemptAt&&now-old.lastAttemptAt<HOLIDAY_MIN_RETRY)return old;
-  const config={...holidayConfig},generation=holidayConfigGeneration;
-  old.lastAttemptAt=now;old.status='loading';old.error=null;
+  holidayStates.set(k,{...old,lastAttemptAt:now,status:'loading',error:null});
   renderHolidayStatus();
   const task=Promise.resolve().then(async()=>{
-    try {
-      const result=await holidayFetchCountry(country,year,config,force);
-      if(generation!==holidayConfigGeneration)return old;
-      const next={...old,...result,status:result.stale?'stale':'ok',error:null,
-        lastAttemptAt:now,nextAttemptAt:result.stale?now+HOLIDAY_RETRY:0};
-      holidayStates.set(key,next);holidaySaveState(next);
-      return next;
-    } catch(e) {
-      if(generation!==holidayConfigGeneration)return old;
-      const next={...old,status:old.holidays.length?'stale':'error',error:holidaySafeError(e),nextAttemptAt:now+HOLIDAY_RETRY};
-      holidayStates.set(key,next);
-      return next;
-    } finally {
-      holidayDirectPending.delete(key);
-      if(year===currentYear)holidayQueueRender();
-    }
+    try{
+      const result=await holidayFetchCountry(country,year);
+      const next={...old,...result,lastAttemptAt:now,nextAttemptAt:0,status:'ok',error:null};
+      holidayStates.set(k,next);holidaySaveState(next);return next;
+    }catch(e){
+      const error=holidaySafeError(e);
+      const retry=['AUTH','FORBIDDEN','QUOTA','KEY_REQUIRED','EMPTY'].includes(error.code)?HOLIDAY_TTL:HOLIDAY_RETRY;
+      const next={...old,lastAttemptAt:now,nextAttemptAt:now+retry,status:old.holidays.length?'stale':'error',error};
+      holidayStates.set(k,next);return next;
+    }finally{holidayPending.delete(k);if(year===currentYear)holidayQueueRender();}
   });
-  holidayDirectPending.set(key,task);return task;
+  holidayPending.set(k,task);return task;
 }
-async function ensureHolidayYear(year,force=false) {
+async function ensureHolidayYear(year,force=false){
   if(!holidayYearAllowed(year))return null;
-  if(holidayPending.has(year))return holidayPending.get(year);
-  const task=Promise.allSettled(holidayCountryCodes.map(c=>holidayRefreshCountry(c,year,force)))
-    .then(()=>({year,countries:holidayCountryCodes.map(c=>holidayState(c,year))}))
-    .finally(()=>{holidayPending.delete(year);if(year===currentYear)renderHolidayStatus();});
-  holidayPending.set(year,task);return task;
+  await Promise.allSettled(holidayCountryCodes.map(c=>holidayRefreshCountry(c,year,force)));
+  return {year,countries:holidayCountryCodes.map(c=>holidayState(c,year))};
 }
 function queueHolidayRefresh(year){queueMicrotask(()=>void ensureHolidayYear(year));}
-function startHolidayAuto() {
-  if(holidayTimerStarted)return;
-  holidayTimerStarted=true;
+function startHolidayAuto(){
+  if(holidayTimerStarted)return;holidayTimerStarted=true;
   const check=()=>{
     if(document.hidden)return;
     const y=new Date().getFullYear();
     for(const year of new Set([currentYear,y,y+1]))void ensureHolidayYear(year);
   };
   check();setInterval(check,15*60*1000);
-  document.addEventListener('visibilitychange',check);
-  window.addEventListener('online',check);
+  document.addEventListener('visibilitychange',check);window.addEventListener('online',check);
 }
 function manualHoliday(e){return e.holidaySource==='manual'||e.manualHoliday===true;}
 function legacyHoliday(e){return e.isHoliday&&!e.holidaySource&&!e.manualHoliday;}
-function holidayRecords(dateStr) {
+function holidayRecords(dateStr){
   const year=Number(dateStr.slice(0,4)),rows=[];
   for(const country of holidayCountryCodes){
     const state=holidayState(country,year);
@@ -790,7 +696,7 @@ function holidayRecords(dateStr) {
         const scope=!h.locations?' [범위 미확인]':h.locations.toLowerCase()==='all'?'':' [지역 한정]';
         rows.push({country,name:(holidayNameMap[h.name]||h.name)+scope+(h.provisional?' [잠정]':''),substitute:h.substitute});
       }
-    } else {
+    }else{
       for(const h of events.filter(e=>legacyHoliday(e)&&String(e.country).toLowerCase()===country&&e.date===dateStr))
         rows.push({country,name:h.title+' (기존 자료·미검증)',substitute:String(h.title).includes('대체')});
     }
@@ -808,135 +714,28 @@ function getDynamicHolidays(dateStr){
 }
 function getHolidayName(d){return getDynamicHolidays(d).kr;}
 function isSubstituteHoliday(d){return getDynamicHolidays(d).isSub;}
-function renderHolidayStatus() {
+function renderHolidayStatus(){
   const host=document.getElementById('holidayStatus');if(!host)return;
-  const names={missing:'설정 필요',loading:'조회 중',ok:'API 수신 정상',cached:'저장 자료',stale:'이전 자료 유지',error:'조회 실패'};
-  const cards=holidayCountryCodes.map(country=>{
-    const s=holidayState(country,currentYear),stamp=s.fetchedAt?new Date(s.fetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}):'정상 수신 기록 없음';
-    const stale=s.holidays.length&&Date.now()-s.fetchedAt>=HOLIDAY_TTL;
-    const label=s.status==='cached'&&stale?'갱신 확인 필요':names[s.status]||s.status;
-    return '<div style="flex:1;min-width:210px;padding:8px 10px;border:1px solid #E2E8F0;border-radius:8px">'+
-      '<strong>'+holidayCountryNames[country]+'</strong> '+holidayEscape(label)+
+  const labels={missing:'조회 대기',loading:'조회 중',ok:'API 수신 정상',cached:'저장 자료',stale:'이전 자료 유지',error:'조회 실패'};
+  host.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap">'+holidayCountryCodes.map(c=>{
+    const s=holidayState(c,currentYear),stamp=s.fetchedAt?new Date(s.fetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}):'정상 수신 기록 없음';
+    return '<div style="flex:1;min-width:200px"><strong>'+holidayCountryNames[c]+'</strong> '+holidayEscape(labels[s.status]||s.status)+
       (s.holidays.length?' · '+s.holidays.length+'건':'')+
-      '<div style="font-size:11px;color:#64748B">'+holidayEscape(s.provider||'연결 대기')+'<br>'+holidayEscape(stamp)+'</div>'+
-      (s.error?'<div style="font-size:11px;color:#B91C1C;white-space:normal">'+holidayEscape(s.error.message)+'</div>':'')+
-      (s.warning?'<div style="font-size:11px;color:#92400E;white-space:normal">'+holidayEscape(s.warning)+'</div>':'')+'</div>';
-  });
-  host.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap">'+cards.join('')+'</div>'+
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">'+
-    '<button class="btn btn-primary" onclick="openHolidaySettings()">⚙ 공휴일 연결 / 개인설정 불러오기</button>'+
-    '<button class="btn btn-ghost" onclick="downloadHolidayDiagnostics()">연결 진단 저장</button>'+
-    '<button class="btn btn-ghost" onclick="reviewLegacyHolidays()">이전 휴무 확인</button></div>'+
-    '<div style="margin-top:6px;color:#64748B">'+
-    '연결 방식: '+holidayEscape(holidayConfig.mode==='direct'?'이 브라우저에서 직접 API 호출':holidayConfig.mode==='server'?'기존 서버':'자동')+
-    '. 정상 목록은 24시간 재사용합니다. 해외는 national 분류이며 지역별 휴무·중국 보충근무일 전체를 보장하지 않습니다.</div>'+
-    (holidaySettingsMessage?'<div style="color:#92400E;margin-top:6px">'+holidayEscape(holidaySettingsMessage)+'</div>':'');
+      '<div style="font-size:11px;color:#64748B">'+holidayEscape(s.provider||'연결 대기')+' · '+holidayEscape(stamp)+'</div>'+
+      (s.error?'<div style="font-size:11px;color:#B91C1C">'+holidayEscape(s.error.message)+'</div>':'')+
+      (s.warning?'<div style="font-size:11px;color:#92400E">'+holidayEscape(s.warning)+'</div>':'')+'</div>';
+  }).join('')+'</div><div style="font-size:11px;color:#64748B;margin-top:6px">개인용 직접 API 연결 · 정상 목록은 24시간 재사용합니다. 해외는 national 분류 기준입니다. API 키가 포함된 HTML이므로 공개 배포하지 마세요.</div>';
   const btn=document.getElementById('syncHolidayBtn');
-  if(btn){
-    btn.textContent=holidayCountryCodes.some(c=>holidayState(c,currentYear).status==='loading')?'🔄 공휴일 조회 중':'🔄 공휴일 다시 조회';
-    btn.classList.add('order-action');btn.disabled=holidayCountryCodes.some(c=>holidayState(c,currentYear).status==='loading');
-  }
+  if(btn){const busy=holidayCountryCodes.some(c=>holidayState(c,currentYear).status==='loading');
+    btn.textContent=busy?'🔄 공휴일 조회 중':'🔄 공휴일 다시 조회';btn.disabled=busy;btn.classList.add('order-action');}
 }
 window.syncHolidays=async function(){
-  if(!holidayYearAllowed(currentYear)){addToast('조회 가능한 연도는 1900~2100년입니다.','error');return;}
-  if(holidayConfig.mode!=='server'&&!holidayConfig.DATA_GO_KR_KEY&&!holidayConfig.CALENDARIFIC_KEY){
-    window.openHolidaySettings();return;
-  }
   const p=await ensureHolidayYear(currentYear,true);
-  const ok=p.countries.filter(c=>c.holidays.length&&!c.error&&Date.now()-c.fetchedAt<HOLIDAY_TTL).length;
-  addToast(ok===4?'공휴일 네 국가의 정상 수신 자료를 확인했습니다.':`정상 자료 ${ok}/4개국. 국가별 오류를 확인하세요. 같은 국가 재시도는 최소 1분 간격입니다.`,ok===4?'success':'error');
+  if(!p){addToast('조회 가능한 연도는 1900~2100년입니다.','error');return;}
+  const ok=p.countries.filter(s=>s.holidays.length&&!s.error&&Date.now()-s.fetchedAt<HOLIDAY_TTL).length;
+  addToast(ok===4?'네 국가의 공휴일 수신 자료를 확인했습니다.':`정상 자료 ${ok}/4개국. 상단 오류를 확인하세요. 재시도는 최소 1분 간격입니다.`,ok===4?'success':'error');
 };
-window.openHolidaySettings=function(){
-  document.getElementById('holidayConnectionOverlay')?.remove();
-  const overlay=document.createElement('div');overlay.id='holidayConnectionOverlay';overlay.className='overlay';overlay.style.zIndex='12000';
-  overlay.innerHTML='<div class="modal" style="max-width:620px">'+
-    '<div class="modal-header"><h3>공휴일 연결</h3><button class="modal-close" id="holidayClose">✕</button></div>'+
-    '<p style="font-size:13px;line-height:1.7;margin-bottom:12px">서버 없이 사용하려면 제공된 <strong>개인설정 JSON</strong>을 불러온 뒤 저장하세요. 키는 공개 HTML이나 주문 DB에 올라가지 않고, 이 브라우저에서만 사용합니다.</p>'+
-    '<label class="form-label">개인설정 파일</label><input type="file" id="holidayConfigFile" accept=".json" class="form-input">'+
-    '<div id="holidayImportMessage" style="font-size:12px;margin:8px 0"></div>'+
-    '<label class="form-label">연결 방식</label><select id="holidayMode" class="form-input"><option value="direct">직접 API 연결 (서버 불필요)</option><option value="auto">자동 (키가 있으면 직접 연결)</option><option value="server">기존 /api/holidays 서버만 사용</option></select>'+
-    '<label class="form-label" style="margin-top:12px">한국 공공데이터 키</label><input id="holidayKrKey" type="password" autocomplete="off" class="form-input">'+
-    '<label class="form-label" style="margin-top:12px">Calendarific 키</label><input id="holidayIntlKey" type="password" autocomplete="off" class="form-input">'+
-    '<label style="display:flex;gap:8px;margin:12px 0;font-size:13px"><input id="holidayRemember" type="checkbox">이 브라우저에 키 기억 (개인 PC에서만 선택)</label>'+
-    '<p style="font-size:11px;line-height:1.7;color:#64748B">직접 연결에서는 키가 API 제공업체로 전송됩니다. 브라우저 저장소와 네트워크를 볼 수 있는 사용자는 키를 확인할 수 있습니다. 여러 PC는 각각 설정하며, API 한도는 같은 키의 사용량을 합산합니다. 기억하지 않으면 새로고침 후 다시 불러와야 합니다.</p>'+
-    '<div style="display:flex;gap:8px;margin-top:16px"><button id="holidayForget" class="btn btn-ghost">저장 키 삭제</button><button id="holidaySave" class="btn btn-primary" style="flex:1">저장하고 공휴일 조회</button></div></div>';
-  document.body.appendChild(overlay);
-  const get=id=>overlay.querySelector('#'+id);
-  get('holidayMode').value=holidayConfig.mode==='auto'&&!holidayConfig.CALENDARIFIC_KEY?'direct':holidayConfig.mode;
-  get('holidayKrKey').value=holidayConfig.DATA_GO_KR_KEY;get('holidayIntlKey').value=holidayConfig.CALENDARIFIC_KEY;
-  get('holidayRemember').checked=holidayConfig.remember;
-  const close=()=>overlay.remove();get('holidayClose').onclick=close;overlay.onclick=e=>{if(e.target===overlay)close();};
-  get('holidayConfigFile').onchange=async e=>{
-    const f=e.target.files?.[0];if(!f)return;
-    try {
-      if(f.size>16000)throw new Error('설정 파일이 너무 큽니다.');
-      const parsed=JSON.parse((await f.text()).replace(/^\uFEFF/,''));
-      if(parsed.format!=='onmedical-holiday-private-v2')throw new Error('온메디칼 공휴일 개인설정 JSON이 아닙니다.');
-      const config=holidayConfigFrom(parsed);
-      if(!config.CALENDARIFIC_KEY)throw new Error('Calendarific 키가 없는 설정입니다.');
-      get('holidayKrKey').value=config.DATA_GO_KR_KEY;get('holidayIntlKey').value=config.CALENDARIFIC_KEY;
-      get('holidayMode').value='direct';
-      get('holidayImportMessage').textContent='키를 불러왔습니다. 아래 저장 버튼을 누르면 조회합니다.';
-    } catch {get('holidayImportMessage').textContent='설정을 읽지 못했습니다. 제공된 개인설정 JSON 파일인지 확인하세요.';}
-  };
-  get('holidayForget').onclick=()=>{
-    if(!confirm('이 브라우저의 공휴일 키만 삭제할까요? 주문과 공휴일 목록은 유지합니다.'))return;
-    holidayConfigGeneration++;holidayConfig=holidayConfigFrom(null);
-    try{localStorage.removeItem(HOLIDAY_SETTINGS);}catch{}
-    get('holidayKrKey').value='';get('holidayIntlKey').value='';get('holidayRemember').checked=false;
-    get('holidayImportMessage').textContent='브라우저 키를 삭제했습니다. 이미 전송된 요청은 취소되지 않습니다.';
-    renderHolidayStatus();
-  };
-  get('holidaySave').onclick=async()=>{
-    try {
-      const config=holidayConfigFrom({mode:get('holidayMode').value,DATA_GO_KR_KEY:get('holidayKrKey').value,
-        CALENDARIFIC_KEY:get('holidayIntlKey').value,remember:get('holidayRemember').checked});
-      if(config.mode!=='server'&&!config.CALENDARIFIC_KEY){get('holidayImportMessage').textContent='개인설정 JSON을 불러오거나 Calendarific 키를 입력하세요.';return;}
-      get('holidaySave').disabled=true;
-      // 진행 중인 요청을 마친 뒤 새 설정을 적용해 오래된 키의 응답이 덮어쓰지 않게 합니다.
-      await Promise.allSettled([...holidayDirectPending.values()]);
-      holidayConfigGeneration++;holidayConfig=config;holidaySettingsMessage='';
-      if(config.remember){
-        if(!holidayWriteStorage(HOLIDAY_SETTINGS,config))holidaySettingsMessage='브라우저 저장을 허용하지 않아 키는 현재 탭에서만 사용합니다.';
-      }else{try{localStorage.removeItem(HOLIDAY_SETTINGS);}catch{}}
-      for(const state of holidayStates.values()){state.error=null;state.nextAttemptAt=0;state.lastAttemptAt=0;}
-      close();renderHolidayStatus();
-      await ensureHolidayYear(currentYear,true);
-      const y=new Date().getFullYear();
-      for(const year of new Set([y,y+1]))if(year!==currentYear)void ensureHolidayYear(year);
-    }catch{get('holidaySave').disabled=false;get('holidayImportMessage').textContent='연결 설정을 적용하지 못했습니다. 키 형식을 확인하세요.';}
-  };
-};
-window.downloadHolidayDiagnostics=function(){
-  const report={format:'onmedical-holiday-diagnostics-v2',checkedAt:new Date().toISOString(),
-    pageProtocol:location.protocol,connectionMode:holidayConfig.mode,
-    hasKoreanKey:!!holidayConfig.DATA_GO_KR_KEY,hasCalendarificKey:!!holidayConfig.CALENDARIFIC_KEY,
-    year:currentYear,countries:holidayCountryCodes.map(c=>{
-      const s=holidayState(c,currentYear);
-      return {country:c,status:s.status,count:s.holidays.length,provider:s.provider,
-        fetchedAt:s.fetchedAt?new Date(s.fetchedAt).toISOString():null,error:s.error,warning:s.warning};
-    })};
-  const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
-  const a=document.createElement('a');a.href=url;a.download='공휴일_연결진단_'+currentYear+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-};
-window.reviewLegacyHolidays=function(){
-  const rows=events.filter(e=>legacyHoliday(e)&&String(e.date).startsWith(String(currentYear))).sort((a,b)=>a.date.localeCompare(b.date));
-  const overlay=document.createElement('div');overlay.className='overlay';overlay.style.zIndex='12000';
-  const panel=document.createElement('div');panel.className='modal';panel.style.maxWidth='700px';
-  const h=document.createElement('h3');h.textContent='이전 휴일 자료 확인';panel.appendChild(h);
-  const p=document.createElement('p');p.style.cssText='font-size:12px;line-height:1.7;margin:12px 0';
-  p.textContent='새 API 목록과 예전 자동 수집 목록을 섞지 않습니다. 원본은 삭제하지 않습니다. 직접 등록한 휴무만 수동 휴무로 지정하세요.';panel.appendChild(p);
-  for(const row of rows){
-    const line=document.createElement('div');line.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #E2E8F0';
-    const text=document.createElement('span');text.style.cssText='flex:1;font-size:12px';text.textContent=`${row.date} · ${holidayCountryNames[row.country]||row.country} · ${row.title}`;
-    const keep=document.createElement('button');keep.className='btn btn-ghost';keep.textContent='수동 휴무로 유지';
-    keep.onclick=async()=>{keep.disabled=true;try{await updateDoc(doc(db,'events',row.id),{holidaySource:'manual',manualHoliday:true,updatedAt:serverTimestamp()});keep.textContent='유지 지정됨';}catch{keep.disabled=false;addToast('수동 휴무 지정에 실패했습니다.','error');}};
-    line.append(text,keep);panel.appendChild(line);
-  }
-  const close=document.createElement('button');close.className='btn btn-primary';close.textContent='닫기';close.onclick=()=>overlay.remove();panel.appendChild(close);
-  overlay.appendChild(panel);document.body.appendChild(overlay);
-};
-// END ONMEDICAL HOLIDAY AUTO V2
+// END ONMEDICAL HOLIDAY DIRECT V3
 
 
 function isWorkingDay(dateStr, category, forceShow) {
